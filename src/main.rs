@@ -118,16 +118,20 @@ impl TodoItem {
         let mut progress = Progress::InProgress;
 
         let mut tokens = TodoToken::vec_from(line).into_iter();
+        let mut current_command = None;
         while let Some(token) = tokens.next() {
             match token {
-                TodoToken::Add => todo!(),
-                TodoToken::Remove => todo!(),
-                TodoToken::Edit => todo!(),
-                TodoToken::Category => todo!(),
-                TodoToken::Due => todo!(),
-                TodoToken::Urgency => todo!(),
-                TodoToken::Progress => todo!(),
-                TodoToken::Literal(string) => todo!(),
+                TodoToken::Literal(string) => match current_command {
+                    Some(TodoToken::Add) => description = string,
+                    Some(TodoToken::Remove) => todo!(),
+                    Some(TodoToken::Edit) => todo!(),
+                    Some(TodoToken::Category) => category = Category::from(string),
+                    Some(TodoToken::Due) => todo!(),
+                    Some(TodoToken::Urgency) => todo!(),
+                    Some(TodoToken::Progress) => todo!(),
+                    _ => return Err(()),
+                },
+                _ => current_command = Some(token),
             }
         }
 
