@@ -41,17 +41,48 @@ pub enum TodoToken {
 }
 impl TodoToken {
     fn vec_from(line: &str) -> Vec<TodoToken> {
-        line.split(" ").map(str::to_lowercase).map(|s| {
-            match s.as_str() {
-                "add" | "create" => TodoToken::Add,
-                "remove" | "delete" => TodoToken::Remove,
-                "under" => TodoToken::Category,
-                "due" => TodoToken::Due,
-                "urgency" => TodoToken::Urgency,
-                "progress" => TodoToken::Progress,
-                s => TodoToken::Literal(String::from(s)),
+        let mut vec = vec![];
+        let mut current_literal: Option<String> = None;
+        for string in line.split(" ").map(str::to_lowercase) {
+            let s = string.as_str();
+            match current_literal {
+                Some(cl) => {
+                    match s.strip_suffix('"') {
+                        Some(post_stripped) => {
+                            vec.push(TodoToken::Literal(cl + " " + post_stripped));
+                            current_literal = None;
+                        },
+                        None => current_literal = Some(cl + " " + s),
+                    }
+                },
+                None => {
+                    match s {
+                        "add" | "create" => vec.push(TodoToken::Add),
+                        "remove" | "delete" => vec.push(TodoToken::Remove),
+                        "under" => vec.push(TodoToken::Category),
+                        "due" => vec.push(TodoToken::Due),
+                        "urgency" => vec.push(TodoToken::Urgency),
+                        "progress" => vec.push(TodoToken::Progress),
+                        s => {
+                            match s.strip_prefix('"') {
+                                Some(pre_stripped) => {
+                                    match pre_stripped.strip_suffix('"') {
+                                        Some(stripped) => {
+                                            vec.push(TodoToken::Literal(String::from(stripped)));
+                                            current_literal = None;
+                                        },
+                                        None => current_literal = Some(String::from(pre_stripped)),
+                                    }
+                                },
+                                None => vec.push(TodoToken::Literal(string)),
+                            }
+                        },
+                    }
+                },
+                
             }
-        }).collect()
+        }
+        vec
     }
 }
 
@@ -78,42 +109,46 @@ impl TodoItem {
         }
     }
     
-    fn from_line(line: &str) -> io::Result<TodoItem> {
-        let split = line.split(" ");
-
+    fn from(line: &str) -> Result<TodoItem, ()> {
         let mut description;
         let mut category;
         let mut time_due = None;
         let mut urgency = None;
-        let mut time_created;
+        // let mut time_created;
         let mut progress = Progress::InProgress;
 
-        while let Some(arg) = split.next() {
+        let mut tokens = TodoToken::vec_from(line).into_iter();
+        while let Some(token) = tokens.next() {
             match token {
-                "add" => {
-                    let token2 = match split.next() {
-                        Some(s) => s,
-                        None => eprintln!("bad!"),
-                    };
-
-                    desc
-                },
+                TodoToken::Add => todo!(),
+                TodoToken::Remove => todo!(),
+                TodoToken::Edit => todo!(),
+                TodoToken::Category => todo!(),
+                TodoToken::Due => todo!(),
+                TodoToken::Urgency => todo!(),
+                TodoToken::Progress => todo!(),
+                TodoToken::Literal(string) => todo!(),
             }
         }
 
-        Err("hi");
+        Ok(TodoItem {
+            description,
+            category,
+            time_due,
+            urgency,
+            progress,
+        })
     }
 }
 
 fn main() {
+    let mut todos = vec![];
     loop {
         println!("add an item to your todo list! hahaha lol...");
-        let args = match io::read_to_string(io::stdin()) {
-            Ok(s) => s,
+        let line = match io::read_to_string(io::stdin()) {
+            Ok(string) => string,
             Err(_) => continue,
         };
-
-        let mut split = args.trim();
-        
+        todos.push(TodoItem::from(&line));
     }
 }

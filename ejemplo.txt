@@ -1,0 +1,5 @@
+category add "[ta] cs3410" color "gray"
+
+todo add "review A3: Huffman" under "[ta] cs3410" due "tomorrow" urgency "low" starting "now"
+todo edit "review A3: Huffman" progress "done"
+
