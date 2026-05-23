@@ -1,158 +1,73 @@
-use std::{io, time};
-use ansiterm;
+use chrono::NaiveDateTime;
+use todo::*;
+use std::io;
+use nom::Finish;
 
-pub type Color = ansiterm::Colour;
-
-pub enum CategoryToken {
-    Add,
-    Remove,
-    Edit,
-    Color,
-    Literal(String),
+fn read_input(buffer: &mut String) {
+    io::stdin().read_line(buffer)?;
+    buffer.trim();
 }
 
-pub struct Category {
-    name: String,
-    color: Color,
-}
+pub fn execute_input(input: &str, data: &mut TodoData) -> io::Result<()> {
+    let (remaining, parsed) = Command::parse_from(input).finish().map_err(|e| {
+        io::Error::new(io::ErrorKind::InvalidInput, e.to_string())
+    })?;
 
-pub enum Urgency {
-    Low,
-    Medium,
-    High,
-    LongTerm,
-}
-
-pub enum Progress {
-    InProgress,
-    Done,
-    FuckIt,
-}
-
-pub enum TodoToken {
-    Add,
-    Remove,
-    Edit,
-    Category,
-    Due,
-    Urgency,
-    Progress,
-    Literal(String),
-}
-impl TodoToken {
-    fn vec_from(line: &str) -> Vec<TodoToken> {
-        let mut vec = vec![];
-        let mut current_literal: Option<String> = None;
-        for string in line.split(" ").map(str::to_lowercase) {
-            let s = string.as_str();
-            match current_literal {
-                Some(cl) => {
-                    match s.strip_suffix('"') {
-                        Some(post_stripped) => {
-                            vec.push(TodoToken::Literal(cl + " " + post_stripped));
-                            current_literal = None;
-                        },
-                        None => current_literal = Some(cl + " " + s),
-                    }
-                },
-                None => {
-                    match s {
-                        "add" | "create" => vec.push(TodoToken::Add),
-                        "remove" | "delete" => vec.push(TodoToken::Remove),
-                        "under" => vec.push(TodoToken::Category),
-                        "due" => vec.push(TodoToken::Due),
-                        "urgency" => vec.push(TodoToken::Urgency),
-                        "progress" => vec.push(TodoToken::Progress),
-                        s => {
-                            match s.strip_prefix('"') {
-                                Some(pre_stripped) => {
-                                    match pre_stripped.strip_suffix('"') {
-                                        Some(stripped) => {
-                                            vec.push(TodoToken::Literal(String::from(stripped)));
-                                            current_literal = None;
-                                        },
-                                        None => current_literal = Some(String::from(pre_stripped)),
-                                    }
-                                },
-                                None => vec.push(TodoToken::Literal(string)),
-                            }
-                        },
-                    }
-                },
-                
-            }
-        }
-        vec
+    if !remaining.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("you typed some extra stuff: {}", remaining)));
     }
-}
 
-pub struct TodoItem {
-    description: String,
-    category: Option<Category>,
-    time_due: Option<u64>,
-    urgency: Option<Urgency>,
+    match parsed {
+        Command::CategoryAdd => {
+            println!("You're creating a new category!");
 
-    progress: Progress,
-}
-impl TodoItem {
-    fn new(description: String, category: Option<Category>, time_due: Option<u64>, urgency: Option<Urgency>) -> TodoItem {
-        let now = time::SystemTime::now();
-        // let since_epoch = now.duration_since(time::UNIX_EPOCH).expect("hello this is bad :)");
-        TodoItem {
-            description,
-            category,
-            time_due,
-            urgency,
+            let mut buffer = String::new();
 
-            // time_created: since_epoch.as_secs(),
-            progress: Progress::InProgress,
-        }
+            println!("Name?");
+            read_input(&mut buffer);
+            let name = buffer.clone();
+
+            println!("Color? Options are: {}", );
+            read_input(&mut buffer);
+            let color = Color::from(&buffer);
+
+            data.categories.push(Category::from(name, color));
+        },
+        Command::CategoryEdit => todo!(),
+        Command::TodoAdd => {
+            println!("You're creating a new todo list item!");
+
+            println!("Description?");
+            let mut buffer = String::new();
+            read_input(&mut buffer);
+            let desc = buffer.clone();
+
+            println!("Category? Options are: {:?}", Category::options(data));
+            read_input(&mut buffer);
+            let category = Category::from_data(data, &buffer)?;
+
+            println!("Due date and/or time?");
+            read_input(&mut buffer);
+            let due = DateTime::from(&buffer)?;
+
+            println!("Urgency? Options are: {:?}", Urgency::options());
+            read_input(&mut buffer);
+            let urgency = Urgency::from(&buffer)?;
+
+            data.todos.push(Todo::from(desc, category, due, urgency));
+        },
+        Command::TodoEdit => todo!(),
+        Command::Quit => todo!()
     }
-    
-    fn from(line: &str) -> Result<TodoItem, ()> {
-        let mut description;
-        let mut category;
-        let mut time_due = None;
-        let mut urgency = None;
-        // let mut time_created;
-        let mut progress = Progress::InProgress;
 
-        let mut tokens = TodoToken::vec_from(line).into_iter();
-        let mut current_command = None;
-        while let Some(token) = tokens.next() {
-            match token {
-                TodoToken::Literal(string) => match current_command {
-                    Some(TodoToken::Add) => description = string,
-                    Some(TodoToken::Remove) => todo!(),
-                    Some(TodoToken::Edit) => todo!(),
-                    Some(TodoToken::Category) => category = Category::from(string),
-                    Some(TodoToken::Due) => todo!(),
-                    Some(TodoToken::Urgency) => todo!(),
-                    Some(TodoToken::Progress) => todo!(),
-                    _ => return Err(()),
-                },
-                _ => current_command = Some(token),
-            }
-        }
-
-        Ok(TodoItem {
-            description,
-            category,
-            time_due,
-            urgency,
-            progress,
-        })
-    }
+    Ok(())
 }
 
-fn main() {
-    let mut todos = vec![];
+fn main() -> io::Result<()> {
+    let mut data = todo::TodoData::new();
     loop {
-        println!("add an item to your todo list! hahaha lol...");
-        let line = match io::read_to_string(io::stdin()) {
-            Ok(string) => string,
-            Err(_) => continue,
-        };
-        todos.push(TodoItem::from(&line));
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        execute_input(&input, &mut data)?;
     }
 }

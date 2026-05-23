@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 ansiterm = "0.12.2"
+chrono = "0.4.44"
+nom = "8.0.0"
+strum = "0.28.0"
+strum_macros = "0.28.0"
