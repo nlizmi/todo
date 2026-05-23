@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use chrono::{DateTime, Utc, Local, NaiveDateTime, TimeZone};
 use nom::{
-    IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::map
+    IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}
 };
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, FromRepr};
@@ -14,7 +16,11 @@ pub trait ColorUtilities where Self: Sized {
 }
 impl ColorUtilities for Color {
     fn from_input(input: &str) -> Option<Self> {
-        Self::variants().iter().find(|c| input.to_lowercase() == c.to_string().to_lowercase()).copied()
+        let variants = Self::variants();
+        match input.parse::<usize>() {
+            Ok(n) => variants.get(n).copied(),
+            Err(_) => variants.iter().find(|c| input.to_lowercase() == c.to_string().to_lowercase()).copied()
+        }
     }
     fn to_string(&self) -> String {
         use Color::*;
@@ -66,8 +72,8 @@ impl Category {
     pub fn from(name: String, color: Color) -> Self {
         Self { name: name.to_owned(), color }
     }
-    pub fn from_data<'a>(data: &'a TodoData, name: &str) -> Option<&'a Self> {
-        data.categories.iter().find(|c| name.to_lowercase() == c.name.to_lowercase())
+    pub fn from_data(data: &TodoData, name: &str) -> Option<Rc<Self>> {
+        data.categories.iter().find(|c| name.to_lowercase() == c.name.to_lowercase()).map(|c| Rc::clone(c))
     }
     pub fn options(data: &TodoData) -> impl Iterator<Item = (usize, String)> {
         data.categories.iter().enumerate().map(|(i, c)| (i, c.color.paint(&c.name).to_string()))
@@ -82,10 +88,10 @@ pub enum Urgency {
     LongTerm,
 }
 impl Urgency {
-    pub fn from(s: &str) -> Option<Self> {
-        match s.parse::<usize>() {
+    pub fn from(input: &str) -> Option<Self> {
+        match input.parse::<usize>() {
             Ok(n) => Self::from_repr(n),
-            Err(_) => Self::iter().find(|u| s.to_lowercase() == u.to_string().to_lowercase())
+            Err(_) => Self::iter().find(|u| input.to_lowercase() == u.to_string().to_lowercase())
         }
     }
     pub fn options() -> impl Iterator<Item = (usize, String)> {
@@ -103,24 +109,24 @@ impl ToString for Urgency {
     }
 }
 
-pub struct Todo<'a> {
+pub struct Todo {
     pub desc: String,
-    pub category: &'a Category,
+    pub category: Rc<Category>,
     pub due: Option<DateTime<Utc>>,
     pub urgency: Urgency,
     pub created: DateTime<Utc>,
 }
-impl <'a> Todo<'a> {
-    pub fn from(desc: String, category: &'a Category, due: Option<DateTime<Utc>>, urgency: Urgency) -> Self {
+impl Todo {
+    pub fn from(desc: String, category: Rc<Category>, due: Option<DateTime<Utc>>, urgency: Urgency) -> Self {
         Self { desc, category, due, urgency, created: Local::now().to_utc() }
     }
 }
 
-pub struct TodoData<'a> {
-    pub categories: Vec<Category>,
-    pub todos: Vec<Todo<'a>>,
+pub struct TodoData {
+    pub categories: Vec<Rc<Category>>,
+    pub todos: Vec<Todo>,
 }
-impl TodoData<'_> {
+impl TodoData {
     pub fn new() -> Self {
         Self {
             categories: vec![],
@@ -134,6 +140,7 @@ pub enum Command {
     CategoryEdit,
     TodoAdd,
     TodoEdit,
+    TodoList,
     Quit,
 }
 impl Command {
@@ -141,7 +148,7 @@ impl Command {
         // regex: "(q|quit|(category|todo)\s+(add|edit))"
         alt(
             (
-                map(
+                map_res(
                     (
                         alt(
                             (
@@ -154,22 +161,24 @@ impl Command {
                             (
                                 tag_no_case("add"),
                                 tag_no_case("edit"),
+                                tag_no_case("list"),
                             )
                         )
                     ),
                     |(entity, _, action)| match (entity, action) {
-                        ("category", "add") => Self::CategoryAdd,
-                        ("category", "edit") => Self::CategoryEdit,
-                        ("todo", "add") => Self::TodoAdd,
-                        ("todo", "edit") => Self::TodoEdit,
-                        _ => unreachable!(),
+                        ("category", "add") => Ok(Self::CategoryAdd),
+                        ("category", "edit") => Ok(Self::CategoryEdit),
+                        ("todo", "add") => Ok(Self::TodoAdd),
+                        ("todo", "edit") => Ok(Self::TodoEdit),
+                        ("todo", "list") => Ok(Self::TodoList),
+                        _ => Err("bad"),
                     }
                 ),
                 map(
                     alt(
                         (
-                            tag_no_case("q"),
                             tag_no_case("quit"),
+                            tag_no_case("q"),
                         )
                     ),
                     |_| Self::Quit
