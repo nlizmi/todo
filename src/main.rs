@@ -44,6 +44,7 @@ pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
             data.categories.push(Rc::new(Category::from(name, color)));
         },
         Command::CategoryEdit => todo!(),
+        Command::CategoryList => todo!(),
         Command::TodoAdd => {
             println!("You're creating a new todo list item!");
 

@@ -138,6 +138,7 @@ impl TodoData {
 pub enum Command {
     CategoryAdd,
     CategoryEdit,
+    CategoryList,
     TodoAdd,
     TodoEdit,
     TodoList,
@@ -168,10 +169,11 @@ impl Command {
                     |(entity, _, action)| match (entity, action) {
                         ("category", "add") => Ok(Self::CategoryAdd),
                         ("category", "edit") => Ok(Self::CategoryEdit),
+                        ("category", "list") => Ok(Self::CategoryList),
                         ("todo", "add") => Ok(Self::TodoAdd),
                         ("todo", "edit") => Ok(Self::TodoEdit),
                         ("todo", "list") => Ok(Self::TodoList),
-                        _ => Err("bad"),
+                        _ => Err(()),
                     }
                 ),
                 map(
