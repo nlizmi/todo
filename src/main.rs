@@ -21,7 +21,7 @@ pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
     let mut buffer = String::new();
     read_input(&mut buffer)?;
 
-    let (remaining, parsed) = Command::parse_from(&buffer).finish().map_err(|e| invalid_input_error(&e.to_string()))?;
+    let (remaining, parsed) = Command::parse_from(&buffer).finish().map_err(|_| invalid_input_error(&format!("invalid command: {}", buffer)))?;
 
     if !remaining.is_empty() {
         return Err(invalid_input_error(&format!("you typed some extra stuff: {}", remaining)));
@@ -29,7 +29,7 @@ pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
 
     match parsed {
         Command::GroupAdd => {
-            println!("You're creating a new group!\n");
+            println!("You're creating a new group!");
 
             println!("\nName?");
             read_input(&mut buffer)?;

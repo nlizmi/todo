@@ -22,7 +22,10 @@ impl Group {
         Self { name: name.to_owned(), color }
     }
     pub fn from_data(data: &TodoData, name: &str) -> Option<Rc<Self>> {
-        data.groups.iter().find(|c| name.to_lowercase() == c.name.to_lowercase()).map(|c| Rc::clone(c))
+        match name.parse::<usize>() {
+            Ok(n) => data.groups.get(n),
+            Err(_) => data.groups.iter().find(|c| name.to_lowercase() == c.name.to_lowercase())
+        }.map(|c| Rc::clone(c))
     }
     pub fn options(data: &TodoData) -> impl Iterator<Item = (usize, String)> {
         data.groups.iter().enumerate().map(|(i, c)| (i, c.to_string()))
