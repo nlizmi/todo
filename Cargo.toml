@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 ansiterm = { version = "0.12.2", features = ["derive_serde_style"] }
 chrono = { version = "0.4.44", features = ["serde"] }
+dirs = "6.0.0"
 nom = "8.0.0"
 serde = { version = "1.0.228", features = ["rc"] }
 serde_cbor = "0.11.2"

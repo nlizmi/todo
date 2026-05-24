@@ -1,32 +1,16 @@
+use strum::IntoEnumIterator;
 use todo::*;
 use std::{io, process::exit, rc::Rc};
 use nom::Finish;
 
-fn read_input(buffer: &mut String) -> io::Result<()> {
-    buffer.clear();
-    io::stdin().read_line(buffer)?;
-    *buffer = buffer.trim().to_owned();
-    Ok(())
-}
-
-fn invalid_input_error(msg: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidInput, msg)
-}
-
-fn options_to_string(iter: impl Iterator<Item = (usize, String)>) -> String {
-    let mut s = iter.map(|(i, s)| format!("{}.\t{}", i, s)).fold(String::new(), |a, b| a + &b + "\n");
-    s.pop();
-    s
-}
-
-pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
+pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
     let mut buffer = String::new();
-    read_input(&mut buffer)?;
+    util::read_input(&mut buffer)?;
 
-    let (remaining, parsed) = Command::parse_from(&buffer).finish().map_err(|_| invalid_input_error(&format!("invalid command: {}", buffer)))?;
+    let (remaining, parsed) = Command::parse_from(&buffer).finish().map_err(|_| util::invalid_input_error(&format!("invalid command: {}", buffer)))?;
 
     if !remaining.is_empty() {
-        return Err(invalid_input_error(&format!("you typed some extra stuff: {}", remaining)));
+        return Err(util::invalid_input_error(&format!("you typed some extra stuff: {}", remaining)));
     }
 
     match parsed {
@@ -34,23 +18,22 @@ pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
             println!("You're creating a new group!");
 
             println!("\nName?");
-            read_input(&mut buffer)?;
+            util::read_input(&mut buffer)?;
             let name = buffer.clone();
 
-            println!("\nColor? Options are:\n{}", options_to_string(color_options()));
-            read_input(&mut buffer)?;
-            let color = color_from_input(&buffer).ok_or(invalid_input_error(&format!("invalid color: {}", buffer)))?;
+            println!("\nColor? Options are:\n{}", util::numbered_list_as_string(Color::variants().iter()));
+            util::read_input(&mut buffer)?;
+            let color = Color::from_input(&buffer).ok_or_else(|| util::invalid_input_error(&format!("invalid color: {}", buffer)))?;
 
             let group = Rc::new(Group::from(name, color));
             println!("\nDone! Created group: {}", group);
-            data.groups.push(group);
+            data.groups.insert(group);
+            data.save()?;
         },
         Command::GroupEdit => todo!(),
         Command::GroupList => {
             if data.groups.is_empty() { println!("No groups present! create one by typing: <group/g> add"); }
-            let mut groups = data.groups.clone();
-            groups.sort_by(|a, b| a.name.cmp(&b.name));
-            for (i, group) in groups.iter().enumerate() {
+            for (i, group) in data.groups.iter().enumerate() {
                 println!("{}.\t{}", i, group);
             }
         },
@@ -58,41 +41,38 @@ pub fn prompt_and_execute(data: &mut TodoData) -> io::Result<()> {
             println!("You're creating a new todo list item!");
 
             println!("\nDescription?");
-            read_input(&mut buffer)?;
+            util::read_input(&mut buffer)?;
             let desc = buffer.clone();
 
-            println!("\nGroup (optional)? Options are:\n{}", options_to_string(Group::options(data)));
-            read_input(&mut buffer)?;
+            println!("\nGroup (optional)? Options are:\n{}", util::numbered_list_as_string(data.groups.iter()));
+            util::read_input(&mut buffer)?;
             let group = if buffer.is_empty() {
                 None
             } else {
-                Some(Group::from_data(data, &buffer).ok_or(invalid_input_error(&format!("invalid group: {}", buffer)))?)
+                Some(Group::from_data(data, &buffer).ok_or_else(|| util::invalid_input_error(&format!("invalid group: {}", buffer)))?)
             };
 
             println!("\nDue date and/or time (optional)?");
-            read_input(&mut buffer)?;
+            util::read_input(&mut buffer)?;
             let due = if buffer.is_empty() {
                 None
             } else {
-                Some(datetime_from_input(&buffer).ok_or(invalid_input_error(&format!("invalid date/time: {}", buffer)))?)
+                Some(util::datetime_from_input(&buffer).ok_or_else(|| util::invalid_input_error(&format!("invalid date/time: {}", buffer)))?)
             };
 
-            println!("\nUrgency? Options are:\n{}", options_to_string(Urgency::options()));
-            read_input(&mut buffer)?;
-            let urgency = Urgency::from(&buffer).ok_or(invalid_input_error(&format!("invalid urgency: {}", buffer)))?;
+            println!("\nUrgency? Options are:\n{}", util::numbered_list_as_string(Urgency::iter()));
+            util::read_input(&mut buffer)?;
+            let urgency = Urgency::from(&buffer).ok_or_else(|| util::invalid_input_error(&format!("invalid urgency: {}", buffer)))?;
 
             let todo = Todo::from(desc, group, due, urgency);
             println!("Done! Created todo item: {}", todo);
-            data.todos.push(todo);
+            data.todos.insert(todo);
+            data.save()?;
         },
         Command::TodoEdit => todo!(),
         Command::TodoList => {
             if data.todos.is_empty() { println!("No todo items present! create one by typing: <todo/t> add"); }
-            let mut todos = data.todos.clone();
-            todos.sort_by(|a, b| a.due.cmp(&b.due).then(a.urgency.cmp(&b.urgency)).then(a.desc.cmp(&b.desc)));
-            for (i, todo) in todos.iter().enumerate() {
-                println!("{}.\t{}", i, todo);
-            }
+            println!("{}", util::numbered_list_as_string(data.todos.iter()));
         },
         Command::Help => print_help(),
         Command::Quit => exit(0),
@@ -105,8 +85,8 @@ fn print_help() {
     println!("Available commands:\n  - <todo/t> <add/edit/<list/ls>>\n  - <group/g> <add/edit/<list/ls>>\n  - <help/h>\n  - <quit/q/exit>");
 }
 
-fn main() -> io::Result<()> {
-    let mut data = todo::TodoData::new();
+fn main() {
+    let mut data = TodoData::load();
     println!(r#"
  ,--.--------.   _,.---._                   _,.---._     
 /==/,  -   , -\,-.' , -  `.   _,..---._   ,-.' , -  `.   
@@ -121,7 +101,7 @@ fn main() -> io::Result<()> {
     print_help();
     loop {
         println!();
-        match prompt_and_execute(&mut data) {
+        match prompt_user(&mut data) {
             Ok(_) => (),
             Err(e) => {
                 eprintln!("{}", e);
