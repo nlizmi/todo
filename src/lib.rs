@@ -1,147 +1,127 @@
-use std::rc::Rc;
-
-use chrono::{DateTime, Utc, Local, NaiveDateTime, TimeZone};
+use std::{fmt::Display, rc::Rc};
 use nom::{
     IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}
 };
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, FromRepr};
-use ansiterm::Color;
+use serde_derive::{Serialize, Deserialize};
 
-pub trait ColorUtilities where Self: Sized {
-    fn from_input(input: &str) -> Option<Self>;
-    fn to_string(&self) -> String;
-    fn variants() -> Vec<Self>;
-    fn options() -> impl Iterator<Item = (usize, String)>;
-}
-impl ColorUtilities for Color {
-    fn from_input(input: &str) -> Option<Self> {
-        let variants = Self::variants();
-        match input.parse::<usize>() {
-            Ok(n) => variants.get(n).copied(),
-            Err(_) => variants.iter().find(|c| input.to_lowercase() == c.to_string().to_lowercase()).copied()
-        }
-    }
-    fn to_string(&self) -> String {
-        use Color::*;
-        match self {
-            Black => "black",
-            Red => "red",
-            Green => "green",
-            Yellow => "yellow",
-            Blue => "blue",
-            Purple => "purple",
-            Cyan => "cyan",
-            White => "white",
-            DarkGray => "dark-gray",
-            BrightRed => "bright-red",
-            BrightGreen => "bright-green",
-            BrightYellow => "bright-yellow",
-            BrightBlue => "bright-blue",
-            BrightPurple => "bright-purple",
-            BrightCyan => "bright-cyan",
-            BrightGray => "bright-gray",
-            _ => "default",
-        }.to_owned()
-    }
-    fn variants() -> Vec<Color> {
-        use Color::*;
-        static VARIANTS: [Color; 17] = [Black, Red, Green, Yellow, Blue, Purple, Cyan, White, DarkGray, BrightRed, BrightGreen, BrightYellow, BrightBlue, BrightPurple, BrightCyan, BrightGray, Default];
-        VARIANTS.to_vec()
-    }
-    fn options() -> impl Iterator<Item = (usize, String)> {
-        Self::variants().into_iter().enumerate().map(|(i, v)| (i, v.to_string()))
-    }
-}
+pub mod color_util;
+pub use color_util::*;
 
-pub trait DateTimeUtilities {
-    fn from_input(input: &str) -> Option<Self> where Self: Sized;
-}
-impl DateTimeUtilities for DateTime<Utc> {
-    fn from_input(input: &str) -> Option<Self> {
-        let ndt = NaiveDateTime::parse_from_str(input, "%F").ok()?;
-        Local.from_local_datetime(&ndt).single().map(|dt| dt.to_utc())
-    }
-}
+pub mod chrono_util;
+pub use chrono_util::*;
 
-pub struct Category {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Group {
     pub name: String,
     pub color: Color,
 }
-impl Category {
+impl Group {
     pub fn from(name: String, color: Color) -> Self {
         Self { name: name.to_owned(), color }
     }
     pub fn from_data(data: &TodoData, name: &str) -> Option<Rc<Self>> {
-        data.categories.iter().find(|c| name.to_lowercase() == c.name.to_lowercase()).map(|c| Rc::clone(c))
+        data.groups.iter().find(|c| name.to_lowercase() == c.name.to_lowercase()).map(|c| Rc::clone(c))
     }
     pub fn options(data: &TodoData) -> impl Iterator<Item = (usize, String)> {
-        data.categories.iter().enumerate().map(|(i, c)| (i, c.color.paint(&c.name).to_string()))
+        data.groups.iter().enumerate().map(|(i, c)| (i, c.to_string()))
+    }
+}
+impl Display for Group {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.color.paint(&self.name))
     }
 }
 
-#[derive(EnumIter, FromRepr)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, EnumIter, FromRepr)]
 pub enum Urgency {
+    LongTerm,
     Low,
     Medium,
     High,
-    LongTerm,
 }
 impl Urgency {
     pub fn from(input: &str) -> Option<Self> {
         match input.parse::<usize>() {
             Ok(n) => Self::from_repr(n),
-            Err(_) => Self::iter().find(|u| input.to_lowercase() == u.to_string().to_lowercase())
+            Err(_) => Self::iter().find(|u| input.to_lowercase() == u.as_str().to_lowercase())
         }
     }
     pub fn options() -> impl Iterator<Item = (usize, String)> {
         Self::iter().enumerate().map(|(i, u)| (i, u.to_string()))
     }
-}
-impl ToString for Urgency {
-    fn to_string(&self) -> String {
+    pub fn as_str(&self) -> &str {
         match self {
+            Self::LongTerm => "long-term",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
-            Self::LongTerm => "long-term",
-        }.to_owned()
+        }
+    }
+}
+impl Display for Urgency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let color = match self {
+            Self::LongTerm => Color::Blue,
+            Self::Low => Color::Green,
+            Self::Medium => Color::Yellow,
+            Self::High => Color::Red,
+        };
+        write!(f, "{}", color.paint(self.as_str()))
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Todo {
     pub desc: String,
-    pub category: Rc<Category>,
+    pub category: Option<Rc<Group>>,
     pub due: Option<DateTime<Utc>>,
     pub urgency: Urgency,
     pub created: DateTime<Utc>,
 }
 impl Todo {
-    pub fn from(desc: String, category: Rc<Category>, due: Option<DateTime<Utc>>, urgency: Urgency) -> Self {
+    pub fn from(desc: String, category: Option<Rc<Group>>, due: Option<DateTime<Utc>>, urgency: Urgency) -> Self {
         Self { desc, category, due, urgency, created: Local::now().to_utc() }
     }
 }
+impl Display for Todo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let category = match &self.category {
+            Some(c) => &format!("{}: ", c),
+            None => "",
+        };
+        let colored_desc = Color::Default.bold().paint(&self.desc);
+        let by_due_date = match self.due {
+            Some(dt) => &format!(" by {}", dt),
+            None => "",
+        };
+        write!(f, "{}do {}{} (urgency {})", category, colored_desc, by_due_date, self.urgency)
+    }
+}
 
+#[derive(Serialize, Deserialize)]
 pub struct TodoData {
-    pub categories: Vec<Rc<Category>>,
+    pub groups: Vec<Rc<Group>>,
     pub todos: Vec<Todo>,
 }
 impl TodoData {
     pub fn new() -> Self {
         Self {
-            categories: vec![],
+            groups: vec![],
             todos: vec![]
         }
     }
 }
 
 pub enum Command {
-    CategoryAdd,
-    CategoryEdit,
-    CategoryList,
+    GroupAdd,
+    GroupEdit,
+    GroupList,
     TodoAdd,
     TodoEdit,
     TodoList,
+    Help,
     Quit,
 }
 impl Command {
@@ -153,7 +133,7 @@ impl Command {
                     (
                         alt(
                             (
-                                tag_no_case("category"),
+                                tag_no_case("group"),
                                 tag_no_case("todo"),
                             )
                         ),
@@ -167,9 +147,9 @@ impl Command {
                         )
                     ),
                     |(entity, _, action)| match (entity, action) {
-                        ("category", "add") => Ok(Self::CategoryAdd),
-                        ("category", "edit") => Ok(Self::CategoryEdit),
-                        ("category", "list") => Ok(Self::CategoryList),
+                        ("group", "add") => Ok(Self::GroupAdd),
+                        ("group", "edit") => Ok(Self::GroupEdit),
+                        ("group", "list") => Ok(Self::GroupList),
                         ("todo", "add") => Ok(Self::TodoAdd),
                         ("todo", "edit") => Ok(Self::TodoEdit),
                         ("todo", "list") => Ok(Self::TodoList),
@@ -184,6 +164,15 @@ impl Command {
                         )
                     ),
                     |_| Self::Quit
+                ),
+                map(
+                    alt(
+                        (
+                            tag_no_case("help"),
+                            tag_no_case("h"),
+                        )
+                    ),
+                    |_| Self::Help
                 ),
             )
         ).parse(input)

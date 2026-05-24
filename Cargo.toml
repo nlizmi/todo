@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ansiterm = "0.12.2"
-chrono = "0.4.44"
+ansiterm = { version = "0.12.2", features = ["derive_serde_style"] }
+chrono = { version = "0.4.44", features = ["serde"] }
 nom = "8.0.0"
+serde = { version = "1.0.228", features = ["rc"] }
+serde_cbor = "0.11.2"
+serde_derive = "1.0.228"
 strum = "0.28.0"
 strum_macros = "0.28.0"
