@@ -6,11 +6,8 @@ use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, FromRepr};
 use serde_derive::{Serialize, Deserialize};
 
-pub mod color_util;
-pub use color_util::*;
-
-pub mod chrono_util;
-pub use chrono_util::*;
+pub mod util;
+pub use util::*;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Group {
@@ -75,31 +72,67 @@ impl Display for Urgency {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize, EnumIter, FromRepr)]
+pub enum Progress {
+    InProgress,
+    Done,
+    Abandoned,
+}
+impl Progress {
+    pub fn from(input: &str) -> Option<Self> {
+        match input.parse::<usize>() {
+            Ok(n) => Self::from_repr(n),
+            Err(_) => Self::iter().find(|p| input.to_lowercase() == p.as_str().to_lowercase())
+        }
+    }
+    pub fn options() -> impl Iterator<Item = (usize, String)> {
+        Self::iter().enumerate().map(|(i, u)| (i, u.to_string()))
+    }
+    fn as_str(&self) -> &str {
+        match self {
+            Self::InProgress => "in progress",
+            Self::Done => "done",
+            Self::Abandoned => "abandoned",
+        }
+    }
+}
+impl Display for Progress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let color = match self {
+            Self::InProgress => Color::White,
+            Self::Done => Color::BrightGray,
+            Self::Abandoned => Color::DarkGray,
+        };
+        write!(f, "{}", color.paint(self.as_str()))
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Todo {
     pub desc: String,
-    pub category: Option<Rc<Group>>,
-    pub due: Option<DateTime<Utc>>,
+    pub group: Option<Rc<Group>>,
+    pub due: Option<DateTime<Local>>,
     pub urgency: Urgency,
-    pub created: DateTime<Utc>,
+    pub progress: Progress,
+    pub created: DateTime<Local>,
 }
 impl Todo {
-    pub fn from(desc: String, category: Option<Rc<Group>>, due: Option<DateTime<Utc>>, urgency: Urgency) -> Self {
-        Self { desc, category, due, urgency, created: Local::now().to_utc() }
+    pub fn from(desc: String, group: Option<Rc<Group>>, due: Option<DateTime<Local>>, urgency: Urgency) -> Self {
+        Self { desc, group, due, urgency, progress: Progress::InProgress, created: Local::now() }
     }
 }
 impl Display for Todo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let category = match &self.category {
-            Some(c) => &format!("{}: ", c),
+        let group = match &self.group {
+            Some(c) => &format!("[{}] ", c),
             None => "",
         };
-        let colored_desc = Color::Default.bold().paint(&self.desc);
-        let by_due_date = match self.due {
-            Some(dt) => &format!(" by {}", dt),
+        let colored_desc = Color::White.bold().paint(&self.desc);
+        let due_date = match self.due {
+            Some(dt) => &format!(" due {}", Color::White.paint(dt.format("%a %-d %b %Y at %-I:%M:%S %P").to_string())),
             None => "",
         };
-        write!(f, "{}do {}{} (urgency {})", category, colored_desc, by_due_date, self.urgency)
+        write!(f, "{}{}{} ({} urgency) is {}", group, colored_desc, due_date, self.urgency, self.progress)
     }
 }
 
@@ -129,7 +162,6 @@ pub enum Command {
 }
 impl Command {
     pub fn parse_from(input: &str) -> IResult<&str, Self> {
-        // regex: "(q|quit|(category|todo)\s+(add|edit))"
         alt(
             (
                 map_res(
@@ -137,7 +169,9 @@ impl Command {
                         alt(
                             (
                                 tag_no_case("group"),
+                                tag_no_case("g"),
                                 tag_no_case("todo"),
+                                tag_no_case("t"),
                             )
                         ),
                         multispace1,
@@ -146,16 +180,17 @@ impl Command {
                                 tag_no_case("add"),
                                 tag_no_case("edit"),
                                 tag_no_case("list"),
+                                tag_no_case("ls"),
                             )
                         )
                     ),
                     |(entity, _, action)| match (entity, action) {
-                        ("group", "add") => Ok(Self::GroupAdd),
-                        ("group", "edit") => Ok(Self::GroupEdit),
-                        ("group", "list") => Ok(Self::GroupList),
-                        ("todo", "add") => Ok(Self::TodoAdd),
-                        ("todo", "edit") => Ok(Self::TodoEdit),
-                        ("todo", "list") => Ok(Self::TodoList),
+                        ("group" | "g", "add") => Ok(Self::GroupAdd),
+                        ("group" | "g", "edit") => Ok(Self::GroupEdit),
+                        ("group" | "g", "list" | "ls") => Ok(Self::GroupList),
+                        ("todo" | "t", "add") => Ok(Self::TodoAdd),
+                        ("todo" | "t", "edit") => Ok(Self::TodoEdit),
+                        ("todo" | "t", "list" | "ls") => Ok(Self::TodoList),
                         _ => Err(()),
                     }
                 ),
@@ -164,6 +199,7 @@ impl Command {
                         (
                             tag_no_case("quit"),
                             tag_no_case("q"),
+                            tag_no_case("exit"),
                         )
                     ),
                     |_| Self::Quit

@@ -1,5 +1,11 @@
+pub use chrono::{DateTime, Utc, Local, NaiveDateTime, TimeZone};
 pub use ansiterm::Color;
 use ansiterm::Color::*;
+
+pub fn datetime_from_input(input: &str) -> Option<DateTime<Local>> {
+    let ndt = NaiveDateTime::parse_from_str(input, "%F %-H:%M:%S").ok()?;
+    Local.from_local_datetime(&ndt).single()
+}
 
 pub fn color_from_input(input: &str) -> Option<Color> {
     let variants = color_variants();
