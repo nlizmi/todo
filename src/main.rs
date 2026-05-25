@@ -25,6 +25,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             println!("\nColor? Options are:\n{}", util::numbered_list_as_string(Color::variants.iter()));
             util::read_input(&mut buffer)?;
             let color = colors[util::get_choice_index(&colors, |c| c.as_str().to_owned(), &buffer)?];
+            let color = util::choose_from(&Color::variants, |c| c.as_str().to_owned(), )
 
             let group = Rc::new(RefCell::new(Group::from(name, color)));
             println!("\nDone! Created group: {}", group.borrow());
@@ -35,7 +36,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             println!("You're editing an existing group!");
 
             let groups = &mut data.groups;
-            if !groups.is_sorted() { groups.sort(); }
+            util::checked_sort(groups);
             println!("\nGroup to edit? Options are:\n{}", util::numbered_list_as_string(groups.iter().map(|g| g.borrow())));
             util::read_input(&mut buffer)?;
             let group = groups[util::get_choice_index(&groups, |g| g.borrow().name.clone(), &buffer)?].clone();
@@ -70,43 +71,19 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             data.save()?;
         },
         Command::GroupList => {
-            if data.groups.is_empty() {
-                println!("No groups present! create one by typing: <group/g> add");
-            } else {
-                let groups = &mut data.groups;
-                if !groups.is_sorted() { groups.sort(); }
-                println!("{}", util::numbered_list_as_string(groups.iter().map(|g| g.borrow())));
-            }
+            let groups: Vec<_> = data.groups.iter().map(|g| g.borrow()).collect();
+            println!("{}", util::sorted_options_as_string(&mut groups));
         },
         Command::TodoAdd => {
             println!("You're creating a new todo item!");
 
-            println!("\nDescription?");
-            util::read_input(&mut buffer)?;
-            let desc = buffer.clone();
+            let desc = util::choose(|s| Ok(Description(s.to_owned())), "Description", &mut buffer)?;
 
-            let groups = &mut data.groups;
-            if !groups.is_sorted() { groups.sort(); }
-            println!("\nGroup (optional)? Options are:\n{}", util::numbered_list_as_string(groups.iter().map(|g| g.borrow())));
-            util::read_input(&mut buffer)?;
-            let group = if buffer.is_empty() {
-                None
-            } else {
-                Some(groups[util::get_choice_index(&groups, |g| g.borrow().name.clone(), &buffer)?].clone())
-            };
+            let group = util::opt_choose_from(&mut data.groups, |g| g.borrow().to_string(), "Group", &mut buffer)?.cloned();
 
-            println!("\nDue date and time (optional)? Format is: YYYY-MM-DD HH:MM:SS");
-            util::read_input(&mut buffer)?;
-            let due = if buffer.is_empty() {
-                None
-            } else {
-                Some(util::datetime_from_input(&buffer)?)
-            };
+            let due = util::opt_choose(Datum::from_input, "Due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?;
 
-            let urgencies: Vec<_> = Urgency::iter().collect();
-            println!("\nUrgency? Options are:\n{}", util::numbered_list_as_string(Urgency::iter()));
-            util::read_input(&mut buffer)?;
-            let urgency = urgencies[util::get_choice_index(&urgencies, |u| u.as_str().to_owned(), &buffer)?].clone();
+            let urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), |u| u.as_str().to_owned(), "Urgency", &mut buffer)?.clone();
 
             let todo = TodoItem::from(desc, group, due, urgency);
             println!("\nDone! Created todo item: {}", todo);
@@ -116,57 +93,40 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
         Command::TodoEdit => {
             println!("You're editing an existing todo item!");
 
-            let todos = &mut data.todos;
-            if !todos.is_sorted() { todos.sort(); }
-            println!("\nTodo item to edit? Options are:\n{}", util::numbered_list_as_string(todos.iter()));
-            util::read_input(&mut buffer)?;
-            let index = util::get_choice_index(todos, |t| t.desc.clone(), &buffer)?;
-            let todo = &mut todos[index];
+            let todo = util::choose_from(&mut data.todos, |t| t.desc.0.to_owned(), "Todo item to edit", &mut buffer)?;
 
-            let choices = vec![
+            let choices: Vec<_> = vec![
                 ("desc", format!("Description (currently {})", todo.desc)),
                 ("group", format!("Group (currently {})", match todo.group.as_ref() {
                     Some(g) => g.borrow().to_string(),
                     None => "unassigned".to_owned(),
                 })),
-                ("due", format!("Due date (currently {})", match todo.due {
+                ("due", format!("Due date (currently {})", match &todo.due {
                     Some(d) => d.to_string(),
                     None => "unassigned".to_owned(),
                 })),
                 ("urg", format!("Urgency (currently {})", todo.urgency)),
                 ("prog", format!("Progress (currently {})", todo.progress))
-            ];
-            println!("\nWhat would you like to change? Options are:\n{}", util::numbered_list_as_string(choices.iter().map(|o| format!("{}: {}", o.0, o.1))));
-            util::read_input(&mut buffer)?;
-            let choice = &choices[util::get_choice_index(&choices, |o| o.0.to_owned(), &buffer)?];
-            match choice.0 {
+            ].into_iter().map(|(c, i)| util::ChoiceInfoPair(c.to_owned(), i)).collect();
+            let choice = util::choose_from(&mut choices, |c| c.0, "Property to change", &mut buffer)?;
+            match choice.0.as_str() {
                 "desc" => {
                     println!("\nNew description?");
                     util::read_input(&mut buffer)?;
-                    let desc = buffer.clone();
-
+                    let desc = Description(buffer.clone());
                     todo.desc = desc;
                 },
                 "group" => {
-                    let groups = &mut data.groups;
-                    if !groups.is_sorted() { groups.sort(); }
-                    println!("\nNew group (optional)? Options are:\n{}", util::numbered_list_as_string(groups.iter().map(|g| g.borrow())));
-                    util::read_input(&mut buffer)?;
-                    let group = if buffer.is_empty() {
-                        None
-                    } else {
-                        Some(groups[util::get_choice_index(&groups, |g| g.borrow().name.clone(), &buffer)?].clone())
-                    };
-
+                    let group = util::opt_choose_from(&mut data.groups, |g| g.borrow().to_string(), "New group", &mut buffer)?.cloned();
                     todo.group = group;
                 },
                 "due" => {
-                    println!("\nNew due date and time (optional)? Format is: YYYY-MM-DD HH:MM:SS");
+                    println!("\nNew due date and time (optional)? Format is: YYYY-MM-DD HH:MM:SS\nYou can omit leading zeros for the hours.");
                     util::read_input(&mut buffer)?;
                     let due = if buffer.is_empty() {
                         None
                     } else {
-                        Some(util::datetime_from_input(&buffer)?)
+                        Some(Datum::from_input(&buffer)?)
                     };
 
                     todo.due = due;
@@ -213,7 +173,7 @@ fn print_help() {
 
 fn print_todos(data: &mut TodoData) {
     let todos = &mut data.todos;
-    if !todos.is_sorted() { todos.sort(); }
+    util::checked_sort(todos);
     println!("{}", util::numbered_list_as_string(todos.iter()));
 }
 

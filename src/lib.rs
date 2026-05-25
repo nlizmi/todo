@@ -1,13 +1,20 @@
 use std::{cell::RefCell, fmt::Display, fs, io, rc::Rc};
-use nom::{
-    IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}
-};
+use nom::{IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}};
 use strum_macros::{EnumIter, FromRepr};
 use serde_derive::{Serialize, Deserialize};
+use ansiterm::Colour::*;
+use chrono::TimeZone;
 
 pub mod util;
 use util::*;
-use ansiterm::Colour::*;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Serialize, Deserialize)]
+pub struct Description(pub String);
+impl Display for Description {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", White.bold().paint(&self.0))
+    }
+}
 
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Color(pub ansiterm::Colour);
@@ -88,30 +95,45 @@ impl PartialOrd for Group {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Datum(chrono::DateTime<chrono::Local>);
+impl Datum {
+    pub fn from_input(input: &str) -> io::Result<Self> {
+        let ndt = chrono::NaiveDateTime::parse_from_str(input, "%F %-H:%M:%S").map_err(|_| invalid_input_error(&format!("invalid date & time: {}", input)))?;
+        chrono::Local.from_local_datetime(&ndt).single().map(|dt| Datum(dt)).ok_or_else(|| invalid_input_error(&format!("this date & time is invalid because it falls on a daylight savings time border: {}", input)))
+    }
+}
+impl Display for Datum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self.0.format("%a %b %-d, %Y at %-I:%M:%S %P").to_string();
+        write!(f, "{}", BrightYellow.paint(text))
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, EnumIter, FromRepr)]
 pub enum Urgency {
-    LongTerm,
-    Low,
-    Medium,
     High,
+    Medium,
+    Low,
+    LongTerm,
 }
 impl Urgency {
     pub fn as_str(&self) -> &str {
         match self {
-            Self::LongTerm => "long-term",
-            Self::Low => "low",
-            Self::Medium => "medium",
             Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::LongTerm => "long-term",
         }
     }
 }
 impl Display for Urgency {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let color = match self {
-            Self::LongTerm => Blue,
-            Self::Low => Green,
-            Self::Medium => Yellow,
             Self::High => Red,
+            Self::Medium => Yellow,
+            Self::Low => Green,
+            Self::LongTerm => Blue,
         };
         write!(f, "{}", color.paint(self.as_str()))
     }
@@ -143,18 +165,18 @@ impl Display for Progress {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TodoItem {
-    pub desc: String,
+    pub desc: Description,
     pub group: Option<Rc<RefCell<Group>>>,
-    pub due: Option<DateTime<Local>>,
+    pub due: Option<Datum>,
     pub urgency: Urgency,
     pub progress: Progress,
-    pub created: DateTime<Local>,
+    pub created: Datum,
 }
 impl TodoItem {
-    pub fn from(desc: String, group: Option<Rc<RefCell<Group>>>, due: Option<DateTime<Local>>, urgency: Urgency) -> Self {
-        Self { desc, group, due, urgency, progress: Progress::InProgress, created: Local::now() }
+    pub fn from(desc: Description, group: Option<Rc<RefCell<Group>>>, due: Option<Datum>, urgency: Urgency) -> Self {
+        Self { desc, group, due, urgency, progress: Progress::InProgress, created: Datum(chrono::Local::now()) }
     }
 }
 impl Display for TodoItem {
@@ -163,17 +185,21 @@ impl Display for TodoItem {
             Some(g) => &format!("[{}] ", g.borrow()),
             None => "",
         };
-        let colored_desc = White.bold().paint(&self.desc);
-        let due_date = match self.due {
-            Some(dt) => &format!(" due {}", BrightYellow.paint(dt.format("%a %b %-d, %Y at %-I:%M:%S %P").to_string())),
+        let due_date = match &self.due {
+            Some(dt) => &format!(" due {}", dt),
             None => "",
         };
-        write!(f, "{}{}{} ({} urgency) is {}", group, colored_desc, due_date, self.urgency, self.progress)
+        write!(f, "{}{}{} ({} urgency) is {}", group, self.desc, due_date, self.urgency, self.progress)
     }
 }
 impl Ord for TodoItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.desc.cmp(&other.desc))
+    }
+}
+impl PartialOrd for TodoItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -209,12 +235,12 @@ impl TodoData {
 #[derive(Serialize, Deserialize)]
 /// necessary because `Rc`s don't serialize well :(
 struct TodoItemSaved {
-    desc: String,
+    desc: Description,
     group_index: Option<usize>,
-    due: Option<DateTime<Local>>,
+    due: Option<Datum>,
     urgency: Urgency,
     progress: Progress,
-    created: DateTime<Local>,
+    created: Datum,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -229,10 +255,10 @@ impl TodoDataSaved {
         let todos = data.todos.iter().map(|t| TodoItemSaved {
             desc: t.desc.clone(),
             group_index: t.group.as_ref().and_then(|tg| data.groups.iter().position(|g| Rc::ptr_eq(tg, g))),
-            due: t.due,
+            due: t.due.clone(),
             urgency: t.urgency.clone(),
             progress: t.progress.clone(),
-            created: t.created,
+            created: t.created.clone(),
         }).collect();
         TodoDataSaved { groups, todos }
     }
