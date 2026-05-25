@@ -1,8 +1,7 @@
-use std::{collections::BTreeSet, fmt::Display, fs, io, rc::Rc};
+use std::{cell::RefCell, fmt::Display, fs, io, rc::Rc};
 use nom::{
     IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}
 };
-use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, FromRepr};
 use serde_derive::{Serialize, Deserialize};
 
@@ -13,35 +12,27 @@ use ansiterm::Colour::*;
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Color(pub ansiterm::Colour);
 impl Color {
-    pub fn from_input(input: &str) -> Option<Self> {
-        let variants = Self::variants();
-        match input.parse::<usize>() {
-            Ok(n) => variants.get(n).copied(),
-            Err(_) => variants.iter().find(|c| input.to_lowercase() == c.as_str().to_lowercase()).copied()
-        }
-    }
-    pub fn variants() -> Vec<Self> {
-        static VARIANTS: [Color; 17] = [
-            Color(Black),
-            Color(Red),
-            Color(Green),
-            Color(Yellow),
-            Color(Blue),
-            Color(Purple),
-            Color(Cyan),
-            Color(White),
-            Color(DarkGray),
-            Color(BrightRed),
-            Color(BrightGreen),
-            Color(BrightYellow),
-            Color(BrightBlue),
-            Color(BrightPurple),
-            Color(BrightCyan),
-            Color(BrightGray),
-            Color(Default)
-        ];
-        VARIANTS.to_vec()
-    }
+    #[allow(non_upper_case_globals)]
+    pub const variants: [Color; 17] =[
+        Color(Black),
+        Color(Red),
+        Color(Green),
+        Color(Yellow),
+        Color(Blue),
+        Color(Purple),
+        Color(Cyan),
+        Color(White),
+        Color(DarkGray),
+        Color(BrightRed),
+        Color(BrightGreen),
+        Color(BrightYellow),
+        Color(BrightBlue),
+        Color(BrightPurple),
+        Color(BrightCyan),
+        Color(BrightGray),
+        Color(Default)
+    ];
+    
     pub fn as_str(&self) -> &str {
         match self.0 {
             Black => "black",
@@ -79,12 +70,6 @@ impl Group {
     pub fn from(name: String, color: Color) -> Self {
         Self { name: name.to_owned(), color }
     }
-    pub fn from_data(data: &TodoData, name: &str) -> Option<Rc<Self>> {
-        match name.parse::<usize>() {
-            Ok(n) => data.groups.iter().nth(n),
-            Err(_) => data.groups.iter().find(|c| name.to_lowercase() == c.name.to_lowercase())
-        }.map(|c| Rc::clone(c))
-    }
 }
 impl Display for Group {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -111,12 +96,6 @@ pub enum Urgency {
     High,
 }
 impl Urgency {
-    pub fn from(input: &str) -> Option<Self> {
-        match input.parse::<usize>() {
-            Ok(n) => Self::from_repr(n),
-            Err(_) => Self::iter().find(|u| input.to_lowercase() == u.as_str().to_lowercase())
-        }
-    }
     pub fn as_str(&self) -> &str {
         match self {
             Self::LongTerm => "long-term",
@@ -145,13 +124,7 @@ pub enum Progress {
     Abandoned,
 }
 impl Progress {
-    pub fn from(input: &str) -> Option<Self> {
-        match input.parse::<usize>() {
-            Ok(n) => Self::from_repr(n),
-            Err(_) => Self::iter().find(|p| input.to_lowercase() == p.as_str().to_lowercase())
-        }
-    }
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::InProgress => "in progress",
             Self::Done => "done",
@@ -162,32 +135,32 @@ impl Progress {
 impl Display for Progress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let color = match self {
-            Self::InProgress => White,
-            Self::Done => BrightGray,
-            Self::Abandoned => DarkGray,
+            Self::InProgress => BrightBlue.normal(),
+            Self::Done => BrightGreen.normal(),
+            Self::Abandoned => Red.dimmed(),
         };
         write!(f, "{}", color.paint(self.as_str()))
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Clone, Serialize, Deserialize)]
-pub struct Todo {
+#[derive(Clone, PartialEq, Eq, PartialOrd)]
+pub struct TodoItem {
     pub desc: String,
-    pub group: Option<Rc<Group>>,
+    pub group: Option<Rc<RefCell<Group>>>,
     pub due: Option<DateTime<Local>>,
     pub urgency: Urgency,
     pub progress: Progress,
     pub created: DateTime<Local>,
 }
-impl Todo {
-    pub fn from(desc: String, group: Option<Rc<Group>>, due: Option<DateTime<Local>>, urgency: Urgency) -> Self {
+impl TodoItem {
+    pub fn from(desc: String, group: Option<Rc<RefCell<Group>>>, due: Option<DateTime<Local>>, urgency: Urgency) -> Self {
         Self { desc, group, due, urgency, progress: Progress::InProgress, created: Local::now() }
     }
 }
-impl Display for Todo {
+impl Display for TodoItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let group = match &self.group {
-            Some(c) => &format!("[{}] ", c),
+            Some(g) => &format!("[{}] ", g.borrow()),
             None => "",
         };
         let colored_desc = White.bold().paint(&self.desc);
@@ -198,38 +171,82 @@ impl Display for Todo {
         write!(f, "{}{}{} ({} urgency) is {}", group, colored_desc, due_date, self.urgency, self.progress)
     }
 }
-impl Ord for Todo {
+impl Ord for TodoItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.desc.cmp(&other.desc))
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct TodoData {
-    pub groups: BTreeSet<Rc<Group>>,
-    pub todos: BTreeSet<Todo>,
+    pub groups: Vec<Rc<RefCell<Group>>>,
+    pub todos: Vec<TodoItem>,
 }
 impl TodoData {
     pub fn new() -> Self {
         Self {
-            groups: BTreeSet::new(),
-            todos: BTreeSet::new(),
+            groups: Vec::new(),
+            todos: Vec::new(),
         }
     }
     pub fn save(&self) -> io::Result<()> {
         let path = util::data_path()?;
         fs::create_dir_all(path.parent().unwrap())?;
         let file = fs::File::create(path)?;
-        serde_cbor::to_writer(file, self).map_err(|_| io::Error::new(io::ErrorKind::Other, "couldn't save to the data file"))
+        let saved = TodoDataSaved::from_unsaved(self);
+        serde_cbor::to_writer(file, &saved).map_err(|_| io::Error::new(io::ErrorKind::Other, "couldn't save to the data file"))
     }
     pub fn load() -> Self {
         let load = || -> io::Result<Self> {
             let path = util::data_path()?;
             let file = fs::File::open(path)?;
-            serde_cbor::from_reader(file).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            serde_cbor::from_reader::<TodoDataSaved, _>(file).map(|saved| saved.to_unsaved()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
         };
 
         load().unwrap_or_else(|_| Self::new())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+/// necessary because `Rc`s don't serialize well :(
+struct TodoItemSaved {
+    desc: String,
+    group_index: Option<usize>,
+    due: Option<DateTime<Local>>,
+    urgency: Urgency,
+    progress: Progress,
+    created: DateTime<Local>,
+}
+
+#[derive(Serialize, Deserialize)]
+/// necessary because `Rc`s don't serialize well :(
+struct TodoDataSaved {
+    groups: Vec<Group>,
+    todos: Vec<TodoItemSaved>,
+}
+impl TodoDataSaved {
+    fn from_unsaved(data: &TodoData) -> TodoDataSaved {
+        let groups = data.groups.iter().map(|g| g.borrow().clone()).collect();
+        let todos = data.todos.iter().map(|t| TodoItemSaved {
+            desc: t.desc.clone(),
+            group_index: t.group.as_ref().and_then(|tg| data.groups.iter().position(|g| Rc::ptr_eq(tg, g))),
+            due: t.due,
+            urgency: t.urgency.clone(),
+            progress: t.progress.clone(),
+            created: t.created,
+        }).collect();
+        TodoDataSaved { groups, todos }
+    }
+    fn to_unsaved(self) -> TodoData {
+        let groups: Vec<Rc<RefCell<Group>>> = self.groups.into_iter().map(|g| Rc::new(RefCell::new(g))).collect();
+        let todos = self.todos.into_iter().map(|t| TodoItem {
+            desc: t.desc,
+            group: t.group_index.and_then(|i| groups.get(i).cloned()),
+            due: t.due,
+            urgency: t.urgency,
+            progress: t.progress,
+            created: t.created,
+        }).collect();
+        TodoData { groups, todos }
     }
 }
 
