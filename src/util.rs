@@ -47,14 +47,22 @@ where
     }
 }
 
-pub fn choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<&'a mut T>
+pub fn choose_index_from<T>(options: &mut [T], prompt: &str, input: &mut String) -> io::Result<usize>
 where
     T: Ord + Display + UserInputtable
 {
     println!("\n{}? Options are:\n{}", prompt, sorted_options_as_string(options));
     read_input(input)?;
-    get_choice_index(options, input).map(|i| &mut options[i])
+    get_choice_index(options, input)
 }
+
+pub fn choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<&'a mut T>
+where
+    T: Ord + Display + UserInputtable
+{
+    choose_index_from(options, prompt, input).map(|i| &mut options[i])
+}
+
 
 pub fn opt_choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<Option<&'a mut T>>
 where

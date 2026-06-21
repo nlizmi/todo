@@ -330,9 +330,11 @@ pub enum Command {
     GroupAdd,
     GroupEdit,
     GroupList,
+    GroupRemove,
     TodoAdd,
     TodoEdit,
     TodoList,
+    TodoRemove,
     Help,
     Quit,
 }
@@ -357,6 +359,8 @@ impl Command {
                                 tag_no_case("edit"),
                                 tag_no_case("list"),
                                 tag_no_case("ls"),
+                                tag_no_case("remove"),
+                                tag_no_case("rm"),
                             )
                         )
                     ),
@@ -364,9 +368,11 @@ impl Command {
                         ("group" | "g", "add") => Ok(Self::GroupAdd),
                         ("group" | "g", "edit") => Ok(Self::GroupEdit),
                         ("group" | "g", "list" | "ls") => Ok(Self::GroupList),
+                        ("group" | "g", "remove" | "rm") => Ok(Self::GroupRemove),
                         ("todo" | "t", "add") => Ok(Self::TodoAdd),
                         ("todo" | "t", "edit") => Ok(Self::TodoEdit),
                         ("todo" | "t", "list" | "ls") => Ok(Self::TodoList),
+                        ("todo" | "t", "remove" | "rm") => Ok(Self::TodoRemove),
                         _ => Err(()),
                     }
                 ),

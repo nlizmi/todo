@@ -30,7 +30,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
         Command::GroupEdit => {
             println!("You're editing an existing group!");
 
-            let group = util::choose_from(&mut data.groups, "Group to edit", &mut buffer)?.clone().0;
+            let group = util::choose_from(&mut data.groups, "Group to edit", &mut buffer)?.0.clone();
 
             let mut choices: Vec<_> = vec![
                 ("name", format!("Name (currently {})", group.borrow().name)),
@@ -48,6 +48,19 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
         },
         Command::GroupList => {
             println!("{}", util::sorted_options_as_string(&mut data.groups));
+        },
+        Command::GroupRemove => {
+            let i = util::choose_index_from(&mut data.groups, "Group to remove", &mut buffer)?;
+            let group = data.groups[i].0.clone();
+            for todo in &mut data.todos {
+                if let Some(g) = &todo.group && Rc::ptr_eq(&group, &g.0) {
+                    todo.group = None;
+                }
+            }
+            data.groups.remove(i);
+
+            println!("\nDone! Removed group: {}", group.borrow());
+            data.save()?;
         },
         Command::TodoAdd => {
             println!("You're creating a new todo item!");
@@ -96,6 +109,14 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
         Command::TodoList => {
             print_todos(data);
         },
+        Command::TodoRemove => {
+            let i = util::choose_index_from(&mut data.todos, "Todo item to remove", &mut buffer)?;
+            let todo = data.todos[i].clone();
+            data.todos.remove(i);
+
+            println!("\nDone! Removed todo item: {}", todo);
+            data.save()?;
+        }
         Command::Help => print_help(),
         Command::Quit => exit(0),
     }
@@ -104,7 +125,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Available commands:\n  - <todo/t> <add/edit/<list/ls>>\n  - <group/g> <add/edit/<list/ls>>\n  - <help/h>\n  - <quit/q/exit>");
+    println!("Available commands:\n  - <todo/t> <add/edit/<list/ls>/<remove/rm>>\n  - <group/g> <add/edit/<list/ls>/<remove/rm>>\n  - <help/h>\n  - <quit/q/exit>");
 }
 
 fn print_todos(data: &mut TodoData) {
