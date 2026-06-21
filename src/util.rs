@@ -1,30 +1,43 @@
-use std::{fmt::Display, io, path};
+use std::{cmp, fmt::{self, Display}, io, path};
+
+use crate::{UserInputtable};
 
 #[derive(PartialEq, Eq)]
-pub struct ChoiceInfoPair<C, I>(pub C, pub I);
-impl <C: Display, I: Display> Display for ChoiceInfoPair<C, I> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+pub struct ChoiceInfoPair<I>(pub String, pub I);
+impl <I: Display> Display for ChoiceInfoPair<I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.0, self.1)
     }
 }
-impl <C: Ord, I: Eq> Ord for ChoiceInfoPair<C, I> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+impl <I> UserInputtable for ChoiceInfoPair<I> {
+    fn inputtable_string(&self) -> String {
+        self.0.clone()
+    }
+}
+impl <I: Eq> Ord for ChoiceInfoPair<I> {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.0.cmp(&other.0)
     }
 }
-impl <C: Ord, I: Eq> PartialOrd for ChoiceInfoPair<C, I> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl <I: Eq> PartialOrd for ChoiceInfoPair<I> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(&other))
     }
 }
 
-pub fn choose<T>(transform: impl Fn(&str) -> io::Result<T>, prompt: &str, input: &mut String) -> io::Result<T> {
+pub fn choose<T, F>(transform: &F, prompt: &str, input: &mut String) -> io::Result<T>
+where
+    F: Fn(&str) -> io::Result<T>
+{
     println!("{}?", prompt);
     read_input(input)?;
     transform(input)
 }
 
-pub fn opt_choose<T>(transform: impl Fn(&str) -> io::Result<T>, prompt: &str, input: &mut String) -> io::Result<Option<T>> {
+pub fn opt_choose<T, F>(transform: &F, prompt: &str, input: &mut String) -> io::Result<Option<T>>
+where
+    F: Fn(&str) -> io::Result<T>
+{
     println!("{}?", prompt);
     read_input(input)?;
     if input.is_empty() {
@@ -34,35 +47,47 @@ pub fn opt_choose<T>(transform: impl Fn(&str) -> io::Result<T>, prompt: &str, in
     }
 }
 
-pub fn choose_from<'a, T: Ord + Display>(options: &'a mut [T], stringify: impl Fn(&T) -> String, prompt: &str, input: &mut String) -> io::Result<&'a T> {
+pub fn choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<&'a mut T>
+where
+    T: Ord + Display + UserInputtable
+{
     println!("\n{}? Options are:\n{}", prompt, sorted_options_as_string(options));
     read_input(input)?;
-    get_choice_index(options, stringify, input).map(|i| &options[i])
+    get_choice_index(options, input).map(|i| &mut options[i])
 }
 
-pub fn opt_choose_from<'a, T: Ord + Display>(options: &'a mut [T], stringify: impl Fn(&T) -> String, prompt: &str, input: &mut String) -> io::Result<Option<&'a T>> {
+pub fn opt_choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<Option<&'a mut T>>
+where
+    T: Ord + Display + UserInputtable
+{
     println!("\n{} (optional)? Options are:\n{}", prompt, sorted_options_as_string(options));
     read_input(input)?;
     if input.is_empty() {
         Ok(None)
     } else {
-        get_choice_index(options, stringify, input).map(|i| Some(&options[i]))
+        get_choice_index(options, input).map(|i| Some(&mut options[i]))
     }
 }
 
-pub fn get_choice_index<'a, T>(options: &'a [T], stringify: impl Fn(&T) -> String, input: &str) -> io::Result<usize> {
+pub fn get_choice_index<T>(options: &mut [T], input: &str) -> io::Result<usize>
+where
+    T: UserInputtable
+{
     match input.parse::<usize>() {
         Ok(i) if i < options.len() => Ok(i),
         Ok(i) => Err(invalid_input_error(&format!("index out of bounds: {}", i))),
-        Err(_) => options.iter().position(|option| input.to_lowercase() == stringify(option).to_lowercase()).ok_or_else(|| invalid_input_error(&format!("invalid choice: {}", input)))
+        Err(_) => options.iter().position(|option| input.to_lowercase() == option.inputtable_string().to_lowercase()).ok_or_else(|| invalid_input_error(&format!("invalid choice: {}", input)))
     }
 }
 
-pub fn sorted_options_as_string<T: Ord + Display>(options: &mut [T]) -> String {
+pub fn sorted_options_as_string<T>(options: &mut [T]) -> String
+where 
+    T: Ord + Display
+{
     if !options.is_sorted() { options.sort(); }
     let mut iter = options.iter().peekable();
     if iter.peek().is_none() { return "none :(".to_owned(); }
-    let mut s = iter.enumerate().map(|(i, s)| format!("{}.\t{}", i, s)).fold(String::new(), |a, b| a + &b + "\n");
+    let mut s = iter.enumerate().map(|(i, x)| format!("{}.\t{}", i, x)).fold(String::new(), |a, b| a + &b + "\n");
     s.pop();
     s
 }

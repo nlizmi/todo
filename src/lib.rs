@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, fs, io, rc::Rc};
+use std::{cell::RefCell, cmp, fmt::{self, Display}, fs, io, rc::Rc};
 use nom::{IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}};
 use strum_macros::{EnumIter, FromRepr};
 use serde_derive::{Serialize, Deserialize};
@@ -8,10 +8,14 @@ use chrono::TimeZone;
 pub mod util;
 use util::*;
 
+pub trait UserInputtable {
+    fn inputtable_string(&self) -> String;
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Serialize, Deserialize)]
 pub struct Description(pub String);
 impl Display for Description {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", White.bold().paint(&self.0))
     }
 }
@@ -39,8 +43,9 @@ impl Color {
         Color(BrightGray),
         Color(Default)
     ];
-    
-    pub fn as_str(&self) -> &str {
+}
+impl UserInputtable for Color {
+    fn inputtable_string(&self) -> String {
         match self.0 {
             Black => "black",
             Red => "red",
@@ -59,12 +64,23 @@ impl Color {
             BrightCyan => "bright-cyan",
             BrightGray => "bright-gray",
             _ => "default",
-        }
+        }.to_owned()
     }
 }
 impl Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.paint(self.as_str()))
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.paint(self.inputtable_string()))
+    }
+}
+impl Eq for Color {}
+impl Ord for Color {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.0.into_index().cmp(&other.0.into_index())
+    }
+}
+impl PartialOrd for Color {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -79,19 +95,48 @@ impl Group {
     }
 }
 impl Display for Group {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.color.0.paint(&self.name))
     }
 }
 impl Eq for Group {}
 impl Ord for Group {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.name.cmp(&other.name)
     }
 }
 impl PartialOrd for Group {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[derive(PartialEq)]
+pub struct GroupRef(pub Rc<RefCell<Group>>);
+impl UserInputtable for GroupRef {
+    fn inputtable_string(&self) -> String {
+        self.0.borrow().name.clone()
+    }
+}
+impl Display for GroupRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.borrow().fmt(f)
+    }
+}
+impl Eq for GroupRef {}
+impl Ord for GroupRef {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.0.borrow().cmp(&other.0.borrow())
+    }
+}
+impl PartialOrd for GroupRef {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Clone for GroupRef {
+    fn clone(&self) -> Self {
+        GroupRef(Rc::clone(&self.0))
     }
 }
 
@@ -104,7 +149,7 @@ impl Datum {
     }
 }
 impl Display for Datum {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = self.0.format("%a %b %-d, %Y at %-I:%M:%S %P").to_string();
         write!(f, "{}", BrightYellow.paint(text))
     }
@@ -117,25 +162,25 @@ pub enum Urgency {
     Low,
     LongTerm,
 }
-impl Urgency {
-    pub fn as_str(&self) -> &str {
+impl UserInputtable for Urgency {
+    fn inputtable_string(&self) -> String {
         match self {
             Self::High => "high",
             Self::Medium => "medium",
             Self::Low => "low",
             Self::LongTerm => "long-term",
-        }
+        }.to_owned()
     }
 }
 impl Display for Urgency {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let color = match self {
             Self::High => Red,
             Self::Medium => Yellow,
             Self::Low => Green,
             Self::LongTerm => Blue,
         };
-        write!(f, "{}", color.paint(self.as_str()))
+        write!(f, "{}", color.paint(self.inputtable_string()))
     }
 }
 
@@ -145,44 +190,44 @@ pub enum Progress {
     Done,
     Abandoned,
 }
-impl Progress {
-    pub fn as_str(&self) -> &str {
+impl UserInputtable for Progress {
+    fn inputtable_string(&self) -> String {
         match self {
             Self::InProgress => "in progress",
             Self::Done => "done",
             Self::Abandoned => "abandoned",
-        }
+        }.to_owned()
     }
 }
 impl Display for Progress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let color = match self {
             Self::InProgress => BrightBlue.normal(),
             Self::Done => BrightGreen.normal(),
             Self::Abandoned => Red.dimmed(),
         };
-        write!(f, "{}", color.paint(self.as_str()))
+        write!(f, "{}", color.paint(self.inputtable_string()))
     }
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct TodoItem {
     pub desc: Description,
-    pub group: Option<Rc<RefCell<Group>>>,
+    pub group: Option<GroupRef>,
     pub due: Option<Datum>,
     pub urgency: Urgency,
     pub progress: Progress,
     pub created: Datum,
 }
 impl TodoItem {
-    pub fn from(desc: Description, group: Option<Rc<RefCell<Group>>>, due: Option<Datum>, urgency: Urgency) -> Self {
+    pub fn from(desc: Description, group: Option<GroupRef>, due: Option<Datum>, urgency: Urgency) -> Self {
         Self { desc, group, due, urgency, progress: Progress::InProgress, created: Datum(chrono::Local::now()) }
     }
 }
 impl Display for TodoItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let group = match &self.group {
-            Some(g) => &format!("[{}] ", g.borrow()),
+            Some(g) => &format!("[{}] ", g.0.borrow()),
             None => "",
         };
         let due_date = match &self.due {
@@ -192,19 +237,24 @@ impl Display for TodoItem {
         write!(f, "{}{}{} ({} urgency) is {}", group, self.desc, due_date, self.urgency, self.progress)
     }
 }
+impl UserInputtable for TodoItem {
+    fn inputtable_string(&self) -> String {
+        self.desc.0.clone()
+    }
+}
 impl Ord for TodoItem {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.desc.cmp(&other.desc))
     }
 }
 impl PartialOrd for TodoItem {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 pub struct TodoData {
-    pub groups: Vec<Rc<RefCell<Group>>>,
+    pub groups: Vec<GroupRef>,
     pub todos: Vec<TodoItem>,
 }
 impl TodoData {
@@ -251,10 +301,10 @@ struct TodoDataSaved {
 }
 impl TodoDataSaved {
     fn from_unsaved(data: &TodoData) -> TodoDataSaved {
-        let groups = data.groups.iter().map(|g| g.borrow().clone()).collect();
+        let groups = data.groups.iter().map(|g| g.0.borrow().clone()).collect();
         let todos = data.todos.iter().map(|t| TodoItemSaved {
             desc: t.desc.clone(),
-            group_index: t.group.as_ref().and_then(|tg| data.groups.iter().position(|g| Rc::ptr_eq(tg, g))),
+            group_index: t.group.as_ref().and_then(|tg| data.groups.iter().position(|g| Rc::ptr_eq(&tg.0, &g.0))),
             due: t.due.clone(),
             urgency: t.urgency.clone(),
             progress: t.progress.clone(),
@@ -263,7 +313,7 @@ impl TodoDataSaved {
         TodoDataSaved { groups, todos }
     }
     fn to_unsaved(self) -> TodoData {
-        let groups: Vec<Rc<RefCell<Group>>> = self.groups.into_iter().map(|g| Rc::new(RefCell::new(g))).collect();
+        let groups: Vec<_> = self.groups.into_iter().map(|g| GroupRef(Rc::new(RefCell::new(g)))).collect();
         let todos = self.todos.into_iter().map(|t| TodoItem {
             desc: t.desc,
             group: t.group_index.and_then(|i| groups.get(i).cloned()),
