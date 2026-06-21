@@ -31,7 +31,11 @@ where
 {
     println!("{}?", prompt);
     read_input(input)?;
-    transform(input)
+    if input.is_empty() {
+        Err(invalid_input_error("choice can't be empty"))
+    } else {
+        transform(input)
+    }
 }
 
 pub fn opt_choose<T, F>(transform: &F, prompt: &str, input: &mut String) -> io::Result<Option<T>>
@@ -64,7 +68,7 @@ where
 }
 
 
-pub fn opt_choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<Option<&'a mut T>>
+pub fn opt_choose_index_from<T>(options: &mut [T], prompt: &str, input: &mut String) -> io::Result<Option<usize>>
 where
     T: Ord + Display + UserInputtable
 {
@@ -73,8 +77,15 @@ where
     if input.is_empty() {
         Ok(None)
     } else {
-        get_choice_index(options, input).map(|i| Some(&mut options[i]))
+        get_choice_index(options, input).map(|i| Some(i))
     }
+}
+
+pub fn opt_choose_from<'a, T>(options: &'a mut [T], prompt: &str, input: &mut String) -> io::Result<Option<&'a mut T>>
+where
+    T: Ord + Display + UserInputtable
+{
+    opt_choose_index_from(options, prompt, input).map(|opt| opt.map(|i| &mut options[i]))
 }
 
 pub fn get_choice_index<T>(options: &mut [T], input: &str) -> io::Result<usize>
@@ -82,7 +93,7 @@ where
     T: UserInputtable
 {
     match input.parse::<usize>() {
-        Ok(i) if i < options.len() => Ok(i),
+        Ok(i) if i > 0 && i <= options.len() => Ok(i - 1),
         Ok(i) => Err(invalid_input_error(&format!("index out of bounds: {}", i))),
         Err(_) => options.iter().position(|option| input.to_lowercase() == option.inputtable_string().to_lowercase()).ok_or_else(|| invalid_input_error(&format!("invalid choice: {}", input)))
     }
@@ -95,7 +106,7 @@ where
     if !options.is_sorted() { options.sort(); }
     let mut iter = options.iter().peekable();
     if iter.peek().is_none() { return "none :(".to_owned(); }
-    let mut s = iter.enumerate().map(|(i, x)| format!("{}.\t{}", i, x)).fold(String::new(), |a, b| a + &b + "\n");
+    let mut s = iter.enumerate().map(|(i, x)| format!("{}.\t{}", i + 1, x)).fold(String::new(), |a, b| a + &b + "\n");
     s.pop();
     s
 }
