@@ -141,14 +141,14 @@ impl Clone for GroupRef {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Datum(chrono::DateTime<chrono::Local>);
-impl Datum {
+pub struct Instant(chrono::DateTime<chrono::Local>);
+impl Instant {
     pub fn from_input(input: &str) -> io::Result<Self> {
         let ndt = chrono::NaiveDateTime::parse_from_str(input, "%F %-H:%M:%S").map_err(|_| invalid_input_error(&format!("invalid date & time: {}", input)))?;
-        chrono::Local.from_local_datetime(&ndt).single().map(|dt| Datum(dt)).ok_or_else(|| invalid_input_error(&format!("this date & time is invalid because it falls on a daylight savings time border: {}", input)))
+        chrono::Local.from_local_datetime(&ndt).single().map(|dt| Instant(dt)).ok_or_else(|| invalid_input_error(&format!("this date & time is invalid because it falls on a daylight savings time border: {}", input)))
     }
 }
-impl Display for Datum {
+impl Display for Instant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = self.0.format("%a %b %-d, %Y at %-I:%M:%S %P").to_string();
         write!(f, "{}", BrightYellow.paint(text))
@@ -212,16 +212,16 @@ impl Display for Progress {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct TodoItem {
-    pub desc: Description,
+    pub description: Description,
     pub group: Option<GroupRef>,
-    pub due: Option<Datum>,
+    pub due: Option<Instant>,
     pub urgency: Urgency,
     pub progress: Progress,
-    pub created: Datum,
+    pub created: Instant,
 }
 impl TodoItem {
-    pub fn from(desc: Description, group: Option<GroupRef>, due: Option<Datum>, urgency: Urgency) -> Self {
-        Self { desc, group, due, urgency, progress: Progress::InProgress, created: Datum(chrono::Local::now()) }
+    pub fn from(description: Description, group: Option<GroupRef>, due: Option<Instant>, urgency: Urgency) -> Self {
+        Self { description, group, due, urgency, progress: Progress::InProgress, created: Instant(chrono::Local::now()) }
     }
 }
 impl Display for TodoItem {
@@ -234,17 +234,17 @@ impl Display for TodoItem {
             Some(dt) => &format!(" due {}", dt),
             None => "",
         };
-        write!(f, "{}{}{} ({} urgency) is {}", group, self.desc, due_date, self.urgency, self.progress)
+        write!(f, "{}{}{} ({} urgency) is {}", group, self.description, due_date, self.urgency, self.progress)
     }
 }
 impl UserInputtable for TodoItem {
     fn inputtable_string(&self) -> String {
-        self.desc.0.clone()
+        self.description.0.clone()
     }
 }
 impl Ord for TodoItem {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.desc.cmp(&other.desc))
+        self.progress.cmp(&other.progress).then(self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.description.cmp(&other.description)))
     }
 }
 impl PartialOrd for TodoItem {
@@ -287,10 +287,10 @@ impl TodoData {
 struct TodoItemSaved {
     desc: Description,
     group_index: Option<usize>,
-    due: Option<Datum>,
+    due: Option<Instant>,
     urgency: Urgency,
     progress: Progress,
-    created: Datum,
+    created: Instant,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -303,7 +303,7 @@ impl TodoDataSaved {
     fn from_unsaved(data: &TodoData) -> TodoDataSaved {
         let groups = data.groups.iter().map(|g| g.0.borrow().clone()).collect();
         let todos = data.todos.iter().map(|t| TodoItemSaved {
-            desc: t.desc.clone(),
+            desc: t.description.clone(),
             group_index: t.group.as_ref().and_then(|tg| data.groups.iter().position(|g| Rc::ptr_eq(&tg.0, &g.0))),
             due: t.due.clone(),
             urgency: t.urgency.clone(),
@@ -315,7 +315,7 @@ impl TodoDataSaved {
     fn to_unsaved(self) -> TodoData {
         let groups: Vec<_> = self.groups.into_iter().map(|g| GroupRef(Rc::new(RefCell::new(g)))).collect();
         let todos = self.todos.into_iter().map(|t| TodoItem {
-            desc: t.desc,
+            description: t.desc,
             group: t.group_index.and_then(|i| groups.get(i).cloned()),
             due: t.due,
             urgency: t.urgency,

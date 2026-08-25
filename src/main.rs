@@ -67,7 +67,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 
             let desc = util::choose(&|s| Ok(Description(s.to_owned())), "Description", &mut buffer)?;
             let group = util::opt_choose_from(&mut data.groups, "Group", &mut buffer)?.cloned();
-            let due = util::opt_choose(&Datum::from_input, "Due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?;
+            let due = util::opt_choose(&Instant::from_input, "Due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?;
             let urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "Urgency", &mut buffer)?.clone();
 
             let todo = TodoItem::from(desc, group, due, urgency);
@@ -81,7 +81,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let todo = util::choose_from(&mut data.todos, "Todo item to edit", &mut buffer)?;
 
             let mut choices: Vec<_> = vec![
-                ("desc", format!("Description (currently {})", todo.desc)),
+                ("description", format!("Description (currently {})", todo.description)),
                 ("group", format!("Group (currently {})", match &todo.group {
                     Some(g) => g.0.borrow().to_string(),
                     None => "unassigned".to_owned(),
@@ -90,16 +90,16 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
                     Some(d) => d.to_string(),
                     None => "unassigned".to_owned(),
                 })),
-                ("urg", format!("Urgency (currently {})", todo.urgency)),
-                ("prog", format!("Progress (currently {})", todo.progress))
+                ("urgency", format!("Urgency (currently {})", todo.urgency)),
+                ("progress", format!("Progress (currently {})", todo.progress))
             ].into_iter().map(|(c, i)| util::ChoiceInfoPair(c.to_owned(), i)).collect();
             let choice = util::choose_from(&mut choices, "Property to change", &mut buffer)?;
             match choice.0.as_str() {
-                "desc" => todo.desc = util::choose(&|s| Ok(Description(s.to_owned())), "New description", &mut buffer)?,
+                "description" => todo.description = util::choose(&|s| Ok(Description(s.to_owned())), "New description", &mut buffer)?,
                 "group" => todo.group = util::opt_choose_from(&mut data.groups, "New group", &mut buffer)?.cloned(),
-                "due" => todo.due = util::opt_choose(&Datum::from_input, "New due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?,
-                "urg" => todo.urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "New urgency", &mut buffer)?.clone(),
-                "prog" => todo.progress = util::choose_from(&mut Progress::iter().collect::<Vec<_>>(), "New progress", &mut buffer)?.clone(),
+                "due" => todo.due = util::opt_choose(&Instant::from_input, "New due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?,
+                "urgency" => todo.urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "New urgency", &mut buffer)?.clone(),
+                "progress" => todo.progress = util::choose_from(&mut Progress::iter().collect::<Vec<_>>(), "New progress", &mut buffer)?.clone(),
                 _ => unreachable!(),
             }
 

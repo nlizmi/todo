@@ -16,6 +16,15 @@
         packages.default = craneLib.buildPackage {
           src = craneLib.cleanCargoSource ./.;
         };
+        
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            rustc
+            cargo
+            rust-analyzer
+          ];
+          RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+        };
       }
     );
 }
