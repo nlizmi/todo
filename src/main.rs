@@ -25,6 +25,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let group = GroupRef(Rc::new(RefCell::new(Group::from(name, color))));
             println!("\nDone! Created group: {}", group.0.borrow());
             data.groups.push(group);
+            print_groups(data);
             data.save()?;
         },
         Command::GroupEdit => {
@@ -33,8 +34,8 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let group = util::choose_from(&mut data.groups, "Group to edit", &mut buffer)?.0.clone();
 
             let mut choices: Vec<_> = vec![
-                ("name", format!("Name (currently {})", group.borrow().name)),
-                ("color", format!("Color (currently {})", group.borrow().color)),
+                ("name", group.borrow().name.to_string()),
+                ("color", group.borrow().color.to_string()),
             ].into_iter().map(|(c, i)| util::ChoiceInfoPair(c.to_owned(), i)).collect();
             let choice = util::choose_from(&mut choices, "Property to change", &mut buffer)?;
             match choice.0.as_str() {
@@ -44,10 +45,11 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             }
 
             println!("\nDone! Edited group: {}", group.borrow());
+            print_groups(data);
             data.save()?;
         },
         Command::GroupList => {
-            println!("{}", util::sorted_options_as_string(&mut data.groups));
+            print_groups(data);
         },
         Command::GroupRemove => {
             let i = util::choose_index_from(&mut data.groups, "Group to remove", &mut buffer)?;
@@ -60,6 +62,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             data.groups.remove(i);
 
             println!("\nDone! Removed group: {}", group.borrow());
+            print_groups(data);
             data.save()?;
         },
         Command::TodoAdd => {
@@ -73,6 +76,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let todo = TodoItem::from(desc, group, due, urgency);
             println!("\nDone! Created todo item: {}", todo);
             data.todos.push(todo);
+            print_todos(data);
             data.save()?;
         },
         Command::TodoEdit => {
@@ -81,17 +85,17 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let todo = util::choose_from(&mut data.todos, "Todo item to edit", &mut buffer)?;
 
             let mut choices: Vec<_> = vec![
-                ("description", format!("Description (currently {})", todo.description)),
-                ("group", format!("Group (currently {})", match &todo.group {
+                ("description", todo.description.to_string()),
+                ("group", match &todo.group {
                     Some(g) => g.0.borrow().to_string(),
                     None => "unassigned".to_owned(),
-                })),
-                ("due", format!("Due date (currently {})", match &todo.due {
+                }),
+                ("due", match &todo.due {
                     Some(d) => d.to_string(),
                     None => "unassigned".to_owned(),
-                })),
-                ("urgency", format!("Urgency (currently {})", todo.urgency)),
-                ("progress", format!("Progress (currently {})", todo.progress))
+                }),
+                ("urgency", todo.urgency.to_string()),
+                ("progress", todo.progress.to_string())
             ].into_iter().map(|(c, i)| util::ChoiceInfoPair(c.to_owned(), i)).collect();
             let choice = util::choose_from(&mut choices, "Property to change", &mut buffer)?;
             match choice.0.as_str() {
@@ -104,6 +108,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             }
 
             println!("\nDone! Edited todo item: {}", todo);
+            print_todos(data);
             data.save()?;
         },
         Command::TodoList => {
@@ -115,6 +120,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             data.todos.remove(i);
 
             println!("\nDone! Removed todo item: {}", todo);
+            print_todos(data);
             data.save()?;
         }
         Command::Help => print_help(),
@@ -125,11 +131,15 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 }
 
 fn print_help() {
-    println!("Available commands:\n  - <todo/t> <add/edit/<list/ls>/<remove/rm>>\n  - <group/g> <add/edit/<list/ls>/<remove/rm>>\n  - <help/h>\n  - <quit/q/exit>");
+    println!("Available commands:\n  - <todo/t> <add / <edit/ed> / <list/ls> / <remove/rm>>\n  - <group/g> <add / <edit/ed> / <list/ls> / <remove/rm>>\n  - <help/h>\n  - <quit/q/exit>");
+}
+
+fn print_groups(data: &mut TodoData) {
+    println!("Current groups:\n{}", util::sorted_options_as_string(&mut data.groups));
 }
 
 fn print_todos(data: &mut TodoData) {
-    println!("{}", util::sorted_options_as_string(&mut data.todos));
+    println!("Current todos:\n{}", util::sorted_options_as_string(&mut data.todos));
 }
 
 fn main() {

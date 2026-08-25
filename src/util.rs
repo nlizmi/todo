@@ -6,7 +6,7 @@ use crate::{UserInputtable};
 pub struct ChoiceInfoPair<I>(pub String, pub I);
 impl <I: Display> Display for ChoiceInfoPair<I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.0, self.1)
+        write!(f, "{} ({})", self.0, self.1)
     }
 }
 impl <I> UserInputtable for ChoiceInfoPair<I> {
@@ -29,7 +29,7 @@ pub fn choose<T, F>(transform: &F, prompt: &str, input: &mut String) -> io::Resu
 where
     F: Fn(&str) -> io::Result<T>
 {
-    println!("{}?", prompt);
+    println!("\n{}?", prompt);
     read_input(input)?;
     if input.is_empty() {
         Err(invalid_input_error("choice can't be empty"))
@@ -42,7 +42,7 @@ pub fn opt_choose<T, F>(transform: &F, prompt: &str, input: &mut String) -> io::
 where
     F: Fn(&str) -> io::Result<T>
 {
-    println!("{}?", prompt);
+    println!("\n{} (optional)?", prompt);
     read_input(input)?;
     if input.is_empty() {
         Ok(None)

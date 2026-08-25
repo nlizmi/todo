@@ -203,7 +203,7 @@ impl Display for Progress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let color = match self {
             Self::InProgress => BrightBlue.normal(),
-            Self::Done => BrightGreen.normal(),
+            Self::Done => Green.normal(),
             Self::Abandoned => Red.dimmed(),
         };
         write!(f, "{}", color.paint(self.inputtable_string()))
@@ -234,7 +234,7 @@ impl Display for TodoItem {
             Some(dt) => &format!(" due {}", dt),
             None => "",
         };
-        write!(f, "{}{}{} ({} urgency) is {}", group, self.description, due_date, self.urgency, self.progress)
+        write!(f, "({}) {}{}{} ({} urgency)", self.progress, group, self.description, due_date, self.urgency)
     }
 }
 impl UserInputtable for TodoItem {
@@ -244,7 +244,7 @@ impl UserInputtable for TodoItem {
 }
 impl Ord for TodoItem {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.progress.cmp(&other.progress).then(self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.description.cmp(&other.description)))
+        self.progress.cmp(&other.progress).then(self.urgency.cmp(&other.urgency)).then(self.due.cmp(&other.due).then(self.description.cmp(&other.description)))
     }
 }
 impl PartialOrd for TodoItem {
@@ -357,6 +357,7 @@ impl Command {
                             (
                                 tag_no_case("add"),
                                 tag_no_case("edit"),
+                                tag_no_case("ed"),
                                 tag_no_case("list"),
                                 tag_no_case("ls"),
                                 tag_no_case("remove"),
@@ -366,11 +367,11 @@ impl Command {
                     ),
                     |(entity, _, action)| match (entity, action) {
                         ("group" | "g", "add") => Ok(Self::GroupAdd),
-                        ("group" | "g", "edit") => Ok(Self::GroupEdit),
+                        ("group" | "g", "edit" | "ed") => Ok(Self::GroupEdit),
                         ("group" | "g", "list" | "ls") => Ok(Self::GroupList),
                         ("group" | "g", "remove" | "rm") => Ok(Self::GroupRemove),
                         ("todo" | "t", "add") => Ok(Self::TodoAdd),
-                        ("todo" | "t", "edit") => Ok(Self::TodoEdit),
+                        ("todo" | "t", "edit" | "ed") => Ok(Self::TodoEdit),
                         ("todo" | "t", "list" | "ls") => Ok(Self::TodoList),
                         ("todo" | "t", "remove" | "rm") => Ok(Self::TodoRemove),
                         _ => Err(()),
