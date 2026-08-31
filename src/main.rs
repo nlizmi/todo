@@ -70,7 +70,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 
             let desc = util::choose(&|s| Ok(Description(s.to_owned())), "Description", &mut buffer)?;
             let group = util::opt_choose_from(&mut data.groups, "Group", &mut buffer)?.cloned();
-            let due = util::opt_choose(&Instant::from_input, "Due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?;
+            let due = util::opt_choose(&Instant::from_input, "Due date and time (format YYYY-MM-DD HH:MM)", &mut buffer)?;
             let urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "Urgency", &mut buffer)?.clone();
 
             let todo = TodoItem::from(desc, group, due, urgency);
@@ -101,7 +101,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             match choice.0.as_str() {
                 "description" => todo.description = util::choose(&|s| Ok(Description(s.to_owned())), "New description", &mut buffer)?,
                 "group" => todo.group = util::opt_choose_from(&mut data.groups, "New group", &mut buffer)?.cloned(),
-                "due" => todo.due = util::opt_choose(&Instant::from_input, "New due date and time (format YYYY-MM-DD HH:MM:SS)", &mut buffer)?,
+                "due" => todo.due = util::opt_choose(&Instant::from_input, "New due date and time (format YYYY-MM-DD HH:MM)", &mut buffer)?,
                 "urgency" => todo.urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "New urgency", &mut buffer)?.clone(),
                 "progress" => todo.progress = util::choose_from(&mut Progress::iter().collect::<Vec<_>>(), "New progress", &mut buffer)?.clone(),
                 _ => unreachable!(),
@@ -139,7 +139,7 @@ fn print_groups(data: &mut TodoData) {
 }
 
 fn print_todos(data: &mut TodoData) {
-    println!("Current todos:\n{}", util::sorted_options_as_string(&mut data.todos));
+    println!("Current todos:\n{}", util::sorted_options_as_string(&mut data.current_todos()));
 }
 
 fn main() {

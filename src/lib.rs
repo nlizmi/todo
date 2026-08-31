@@ -24,7 +24,7 @@ impl Display for Description {
 pub struct Color(pub ansiterm::Colour);
 impl Color {
     #[allow(non_upper_case_globals)]
-    pub const variants: [Color; 17] =[
+    pub const variants: [Color; 17] = [
         Color(Black),
         Color(Red),
         Color(Green),
@@ -141,16 +141,28 @@ impl Clone for GroupRef {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Instant(chrono::DateTime<chrono::Local>);
+pub struct Instant(pub chrono::DateTime<chrono::Local>);
 impl Instant {
     pub fn from_input(input: &str) -> io::Result<Self> {
-        let ndt = chrono::NaiveDateTime::parse_from_str(input, "%F %-H:%M:%S").map_err(|_| invalid_input_error(&format!("invalid date & time: {}", input)))?;
+        let ndt = chrono::NaiveDateTime::parse_from_str(input, "%F %-H:%M").map_err(|_| invalid_input_error(&format!("invalid date & time: {}", input)))?;
         chrono::Local.from_local_datetime(&ndt).single().map(|dt| Instant(dt)).ok_or_else(|| invalid_input_error(&format!("this date & time is invalid because it falls on a daylight savings time border: {}", input)))
     }
 }
 impl Display for Instant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text = self.0.format("%a %b %-d, %Y at %-I:%M:%S %P").to_string();
+        let now = Instant(chrono::Local::now());
+        let today = now.0.date_naive();
+        let due_date = self.0.date_naive();
+        let fmt = if due_date == today {
+            "Today at %-I:%M %P"
+        } else if due_date == today + chrono::Duration::days(1) {
+            "Tomorrow at %-I:%M %P"
+        } else if due_date == today - chrono::Duration::days(1) {
+            "Yesterday at %-I:%M %P"
+        } else {
+            "%a, %b %-d, %Y at %-I:%M %P"
+        };
+        let text = self.0.format(fmt).to_string();
         write!(f, "{}", BrightYellow.paint(text))
     }
 }
@@ -231,7 +243,7 @@ impl Display for TodoItem {
             None => "",
         };
         let due_date = match &self.due {
-            Some(dt) => &format!(" due {}", dt),
+            Some(dt) => &format!(" is due {}", dt),
             None => "",
         };
         write!(f, "({}) {}{}{} ({} urgency)", self.progress, group, self.description, due_date, self.urgency)
@@ -244,7 +256,7 @@ impl UserInputtable for TodoItem {
 }
 impl Ord for TodoItem {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.progress.cmp(&other.progress).then(self.urgency.cmp(&other.urgency)).then(self.due.cmp(&other.due).then(self.description.cmp(&other.description)))
+        self.progress.cmp(&other.progress).then(self.due.cmp(&other.due).then(self.urgency.cmp(&other.urgency)).then(self.description.cmp(&other.description)))
     }
 }
 impl PartialOrd for TodoItem {
@@ -279,6 +291,10 @@ impl TodoData {
         };
 
         load().unwrap_or_else(|_| Self::new())
+    }
+    pub fn current_todos(&self) -> Vec<&TodoItem> {
+        let now = Instant(chrono::Local::now());
+        return self.todos.iter().filter(|&t| t.due.as_ref().is_none_or(|d| *d > now) || t.progress == Progress::InProgress).collect();
     }
 }
 
