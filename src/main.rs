@@ -139,7 +139,13 @@ fn print_groups(data: &mut TodoData) {
 }
 
 fn print_todos(data: &mut TodoData) {
-    println!("Current todos:\n{}", util::sorted_options_as_string(&mut data.current_todos()));
+    let mut current_todos = data.current_todos();
+    println!("Current todos:\n{}", util::sorted_options_as_string(&mut current_todos));
+    let diff = data.todos.len() - current_todos.len();
+    if diff > 0 {
+        let text = format!("(...and {} other finished tasks)", diff);
+        println!("{}", ansiterm::Colour::DarkGray.paint(text));
+    }
 }
 
 fn main() {
