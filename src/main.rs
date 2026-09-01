@@ -86,24 +86,24 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 
             let mut choices: Vec<_> = vec![
                 ("description", todo.description.to_string()),
-                ("group", match &todo.group {
-                    Some(g) => g.0.borrow().to_string(),
-                    None => "unassigned".to_owned(),
-                }),
                 ("due", match &todo.due {
                     Some(d) => d.to_string(),
                     None => "unassigned".to_owned(),
                 }),
+                ("group", match &todo.group {
+                    Some(g) => g.0.borrow().to_string(),
+                    None => "unassigned".to_owned(),
+                }),
+                ("progress", todo.progress.to_string()),
                 ("urgency", todo.urgency.to_string()),
-                ("progress", todo.progress.to_string())
             ].into_iter().map(|(c, i)| util::ChoiceInfoPair(c.to_owned(), i)).collect();
             let choice = util::choose_from(&mut choices, "Property to change", &mut buffer)?;
             match choice.0.as_str() {
                 "description" => todo.description = util::choose(&|s| Ok(Description(s.to_owned())), "New description", &mut buffer)?,
-                "group" => todo.group = util::opt_choose_from(&mut data.groups, "New group", &mut buffer)?.cloned(),
                 "due" => todo.due = util::opt_choose(&Instant::from_input, "New due date and time (format YYYY-MM-DD HH:MM)", &mut buffer)?,
-                "urgency" => todo.urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "New urgency", &mut buffer)?.clone(),
+                "group" => todo.group = util::opt_choose_from(&mut data.groups, "New group", &mut buffer)?.cloned(),
                 "progress" => todo.progress = util::choose_from(&mut Progress::iter().collect::<Vec<_>>(), "New progress", &mut buffer)?.clone(),
+                "urgency" => todo.urgency = util::choose_from(&mut Urgency::iter().collect::<Vec<_>>(), "New urgency", &mut buffer)?.clone(),
                 _ => unreachable!(),
             }
 

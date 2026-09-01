@@ -153,17 +153,20 @@ impl Display for Instant {
         let now = Instant(chrono::Local::now());
         let today = now.0.date_naive();
         let due_date = self.0.date_naive();
-        let fmt = if due_date == today {
-            "Today at %-I:%M %P"
+        let date = if due_date == today {
+            "Today"
         } else if due_date == today + chrono::Duration::days(1) {
-            "Tomorrow at %-I:%M %P"
+            "Tomorrow"
         } else if due_date == today - chrono::Duration::days(1) {
-            "Yesterday at %-I:%M %P"
+            "Yesterday"
         } else {
-            "%a, %b %-d, %Y at %-I:%M %P"
+            "%a, %b %-d, %Y"
         };
-        let text = self.0.format(fmt).to_string();
-        write!(f, "{}", BrightYellow.paint(text))
+        let time = "%-I:%M %P";
+        let date_and_time = format!("{} @ {}", date, time);
+        let text = self.0.format(&date_and_time).to_string();
+        let color = if *self < now { BrightRed } else { BrightCyan };
+        write!(f, "{}", color.paint(text))
     }
 }
 
@@ -243,7 +246,7 @@ impl Display for TodoItem {
             None => "",
         };
         let due_date = match &self.due {
-            Some(dt) => &format!(" is due {}", dt),
+            Some(dt) => &format!(", due {}", dt),
             None => "",
         };
         write!(f, "({}) {}{}{} ({} urgency)", self.progress, group, self.description, due_date, self.urgency)
