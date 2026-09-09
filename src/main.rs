@@ -143,24 +143,28 @@ fn print_todos(data: &mut TodoData) {
     println!("Current todos:\n{}", util::sorted_options_as_string(&mut current_todos));
     let diff = data.todos.len() - current_todos.len();
     if diff > 0 {
-        let text = format!("(...and {} other finished tasks)", diff);
+        let text = format!("(...and {} other finished todos)", diff);
         println!("{}", ansiterm::Colour::DarkGray.paint(text));
     }
 }
 
 fn main() {
     let mut data = TodoData::load();
-    println!(r#"
- ,--.--------.   _,.---._                   _,.---._     
-/==/,  -   , -\,-.' , -  `.   _,..---._   ,-.' , -  `.   
-\==\.-.  - ,-./==/_,  ,  - \/==/,   -  \ /==/_,  ,  - \  
- `--`\==\- \ |==|   .=.     |==|   _   _\==|   .=.     | 
-      \==\_ \|==|_ : ;=:  - |==|  .=.   |==|_ : ;=:  - | 
-      |==|- ||==| , '='     |==|,|   | -|==| , '='     | 
-      |==|, | \==\ -    ,_ /|==|  '='   /\==\ -    ,_ /  
-      /==/ -/  '.='. -   .' |==|-,   _`/  '.='. -   .'   
-      `--`--`    `--`--''   `-.`.____.'     `--`--''     
-"#);
+    println!("{}", ansiterm::Colour::BrightGreen.paint(r#"
+    ___                                   
+  ,--.'|_                 ,---,           
+  |  | :,'   ,---.      ,---.'|   ,---.   
+  :  : ' :  '   ,'\     |   | :  '   ,'\  
+.;__,'  /  /   /   |    |   | | /   /   | 
+|  |   |  .   ; ,. :  ,--.__| |.   ; ,. : 
+:__,'| :  '   | |: : /   ,'   |'   | |: :      ( todo list manager )
+  '  : |__'   | .; :.   '  /  |'   | .; : 
+  |  | '.'|   :    |'   ; |:  ||   :    | 
+  ;  :    ;\   \  / |   | '/  ' \   \  /  
+  |  ,   /  `----'  |   :    :|  `----'   
+   ---`-'            \   \  /             
+                      `----'              
+"#));
     print_todos(&mut data);
     loop {
         println!();
