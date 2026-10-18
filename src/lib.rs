@@ -297,7 +297,7 @@ impl TodoData {
     }
     pub fn current_todos(&self) -> Vec<&TodoItem> {
         let now = Instant(chrono::Local::now());
-        return self.todos.iter().filter(|&t| t.due.as_ref().is_none_or(|d| *d > now) || t.progress == Progress::InProgress).collect();
+        return self.todos.iter().filter(|&t| t.progress == Progress::InProgress || t.due.as_ref().is_some_and(|d| *d > now)).collect();
     }
 }
 
