@@ -25,7 +25,6 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let group = GroupRef(Rc::new(RefCell::new(Group::from(name, color))));
             println!("\nDone! Created group: {}", group.0.borrow());
             data.groups.push(group);
-            print_groups(data);
             data.save()?;
         },
         Command::GroupEdit => {
@@ -45,7 +44,6 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             }
 
             println!("\nDone! Edited group: {}", group.borrow());
-            print_groups(data);
             data.save()?;
         },
         Command::GroupList => {
@@ -62,7 +60,6 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             data.groups.remove(i);
 
             println!("\nDone! Removed group: {}", group.borrow());
-            print_groups(data);
             data.save()?;
         },
         Command::TodoAdd => {
@@ -76,13 +73,13 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             let todo = TodoItem::from(desc, group, due, urgency);
             println!("\nDone! Created todo item: {}", todo);
             data.todos.push(todo);
-            print_todos(data);
             data.save()?;
         },
-        Command::TodoEdit => {
+        Command::TodoEdit(filter) => {
             println!("You're editing an existing todo item!");
 
-            let todo = util::choose_from(&mut data.todos, "Todo item to edit", &mut buffer)?;
+            let mut shown = filter.matching_todos_mut(&mut data.todos);
+            let todo = util::choose_from(&mut shown, "Todo item to edit", &mut buffer)?;
 
             let mut choices: Vec<_> = vec![
                 ("description", todo.description.to_string()),
@@ -108,19 +105,18 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
             }
 
             println!("\nDone! Edited todo item: {}", todo);
-            print_todos(data);
             data.save()?;
         },
-        Command::TodoList => {
-            print_todos(data);
+        Command::TodoList(filter) => {
+            print_todos(data, filter);
         },
-        Command::TodoRemove => {
-            let i = util::choose_index_from(&mut data.todos, "Todo item to remove", &mut buffer)?;
-            let todo = data.todos[i].clone();
-            data.todos.remove(i);
+        Command::TodoRemove(filter) => {
+            let mut shown = filter.matching_todos_mut(&mut data.todos);
+            let todo_ptr: *const TodoItem = &**util::choose_from(&mut shown, "Todo item to remove", &mut buffer)?;
+            let i = data.todos.iter().position(|t| std::ptr::eq(t, todo_ptr)).unwrap();
+            let todo = data.todos.remove(i);
 
             println!("\nDone! Removed todo item: {}", todo);
-            print_todos(data);
             data.save()?;
         }
         Command::Help => print_help(),
@@ -131,6 +127,7 @@ pub fn prompt_user(data: &mut TodoData) -> io::Result<()> {
 }
 
 fn print_help() {
+    //TODO: update this with the filters
     println!("Available commands:\n  - <todo/t> <add / <edit/ed> / <list/ls> / <remove/rm>>\n  - <group/g> <add / <edit/ed> / <list/ls> / <remove/rm>>\n  - <help/h>\n  - <quit/q/exit>");
 }
 
@@ -138,12 +135,12 @@ fn print_groups(data: &mut TodoData) {
     println!("Current groups:\n{}", util::sorted_options_as_string(&mut data.groups));
 }
 
-fn print_todos(data: &mut TodoData) {
-    let mut current_todos = data.current_todos();
-    println!("Current todos:\n{}", util::sorted_options_as_string(&mut current_todos));
-    let diff = data.todos.len() - current_todos.len();
+fn print_todos(data: &mut TodoData, filter: Filter) {
+    let mut shown = filter.matching_todos(&data.todos);
+    println!("Todos:\n{}", util::sorted_options_as_string(&mut shown));
+    let diff = data.todos.len() - shown.len();
     if diff > 0 {
-        let text = format!("(...and {} other finished todos)", diff);
+        let text = format!("(...and {} other todos; try `t ls all`)", diff);
         println!("{}", ansiterm::Colour::DarkGray.paint(text));
     }
 }
@@ -165,7 +162,7 @@ fn main() {
    ---`-'            \   \  /             
                       `----'              
 "#));
-    print_todos(&mut data);
+    print_todos(&mut data, Filter::Just(Progress::InProgress));
     loop {
         println!();
         match prompt_user(&mut data) {

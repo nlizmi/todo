@@ -1,5 +1,5 @@
 use std::{cell::RefCell, cmp, fmt::{self, Display}, fs, io, rc::Rc};
-use nom::{IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, map_res}};
+use nom::{IResult, Parser, branch::alt, bytes::complete::tag_no_case, character::complete::multispace1, combinator::{map, opt, value}, sequence::preceded};
 use strum_macros::{EnumIter, FromRepr};
 use serde_derive::{Serialize, Deserialize};
 use ansiterm::Colour::*;
@@ -10,6 +10,12 @@ use util::*;
 
 pub trait UserInputtable {
     fn inputtable_string(&self) -> String;
+}
+// lets Vec<&mut T> be passed to the choose helpers
+impl<T: UserInputtable> UserInputtable for &mut T {
+    fn inputtable_string(&self) -> String {
+        (**self).inputtable_string()
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Serialize, Deserialize)]
@@ -208,7 +214,7 @@ pub enum Progress {
 impl UserInputtable for Progress {
     fn inputtable_string(&self) -> String {
         match self {
-            Self::InProgress => "in progress",
+            Self::InProgress => "current",
             Self::Done => "done",
             Self::Abandoned => "abandoned",
         }.to_owned()
@@ -295,10 +301,6 @@ impl TodoData {
 
         load().unwrap_or_else(|_| Self::new())
     }
-    pub fn current_todos(&self) -> Vec<&TodoItem> {
-        let now = Instant(chrono::Local::now());
-        return self.todos.iter().filter(|&t| t.progress == Progress::InProgress || t.due.as_ref().is_some_and(|d| *d > now)).collect();
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -345,77 +347,128 @@ impl TodoDataSaved {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum Filter {
+    Just(Progress),
+    All,
+}
+impl Filter {
+    fn matches(&self, t: &TodoItem) -> bool {
+        match self {
+            Self::Just(p) => t.progress == *p,
+            Self::All => true,
+        }
+    }
+    pub fn matching_todos<'a>(&self, todos: &'a [TodoItem]) -> Vec<&'a TodoItem> {
+        todos.iter().filter(|t| self.matches(t)).collect()
+    }
+    pub fn matching_todos_mut<'a>(&self, todos: &'a mut [TodoItem]) -> Vec<&'a mut TodoItem> {
+        todos.iter_mut().filter(|t| self.matches(t)).collect()
+    }
+    fn parse_from(input: &str) -> IResult<&str, Option<Self>> {
+        opt(preceded(
+            multispace1, 
+            alt((
+                value(Self::All, tag_no_case("all")),
+                value(Self::Just(Progress::InProgress), tag_no_case("current")),
+                value(Self::Just(Progress::Done), tag_no_case("done")),
+                value(Self::Just(Progress::Abandoned), tag_no_case("abandoned")),
+            )),
+        )).parse(input)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum Entity {
+    Group,
+    Todo,
+}
+impl Entity {
+    fn parse_from(input: &str) -> IResult<&str, Self> {
+        alt((
+            value(Entity::Group, alt((
+                tag_no_case("group"),
+                tag_no_case("g"),
+            ))),
+            value(Entity::Todo, alt((
+                tag_no_case("todo"),
+                tag_no_case("t"),
+            ))),
+        )).parse(input)
+    }
+}
+#[derive(Clone, PartialEq, Eq)]
+enum Action {
+    Add,
+    Edit,
+    List,
+    Remove,
+}
+impl Action {
+    fn parse_from(input: &str) -> IResult<&str, Self> {
+        alt((
+            value(Action::Add,tag_no_case("add")),
+            value(Action::Edit, alt((
+                tag_no_case("edit"),
+                tag_no_case("ed"),
+            ))),
+            value(Action::List, alt((
+                tag_no_case("list"),
+                tag_no_case("ls"),
+            ))),
+            value(Action::Remove, alt((
+                tag_no_case("remove"),
+                tag_no_case("rm"),
+            ))),
+        )).parse(input)
+    }
+}
+#[derive(Clone, PartialEq, Eq)]
 pub enum Command {
     GroupAdd,
     GroupEdit,
     GroupList,
     GroupRemove,
     TodoAdd,
-    TodoEdit,
-    TodoList,
-    TodoRemove,
+    TodoEdit(Filter),
+    TodoList(Filter),
+    TodoRemove(Filter),
     Help,
     Quit,
 }
 impl Command {
+    fn entity_action_command(input: &str) -> IResult<&str, Command> {
+        let (input, entity) = Entity::parse_from(input)?;
+        let (input, _) = multispace1(input)?;
+        let (input, action) = Action::parse_from(input)?;
+        match entity {
+            Entity::Group => Ok((input, match action {
+                Action::Add => Command::GroupAdd,
+                Action::Edit => Command::GroupEdit,
+                Action::List => Command::GroupList,
+                Action::Remove => Command::GroupRemove,
+            })),
+            Entity::Todo => match action {
+                Action::Add => Ok((input, Command::TodoAdd)),
+                Action::Edit => map(Filter::parse_from, |f| Command::TodoEdit(f.unwrap_or(Filter::Just(Progress::InProgress)))).parse(input),
+                Action::List => map(Filter::parse_from, |f| Command::TodoList(f.unwrap_or(Filter::Just(Progress::InProgress)))).parse(input),
+                Action::Remove => map(Filter::parse_from, |f| Command::TodoRemove(f.unwrap_or(Filter::Just(Progress::InProgress)))).parse(input),
+            },
+        }
+    }
+
     pub fn parse_from(input: &str) -> IResult<&str, Self> {
-        alt(
-            (
-                map_res(
-                    (
-                        alt(
-                            (
-                                tag_no_case("group"),
-                                tag_no_case("g"),
-                                tag_no_case("todo"),
-                                tag_no_case("t"),
-                            )
-                        ),
-                        multispace1,
-                        alt(
-                            (
-                                tag_no_case("add"),
-                                tag_no_case("edit"),
-                                tag_no_case("ed"),
-                                tag_no_case("list"),
-                                tag_no_case("ls"),
-                                tag_no_case("remove"),
-                                tag_no_case("rm"),
-                            )
-                        )
-                    ),
-                    |(entity, _, action)| match (entity, action) {
-                        ("group" | "g", "add") => Ok(Self::GroupAdd),
-                        ("group" | "g", "edit" | "ed") => Ok(Self::GroupEdit),
-                        ("group" | "g", "list" | "ls") => Ok(Self::GroupList),
-                        ("group" | "g", "remove" | "rm") => Ok(Self::GroupRemove),
-                        ("todo" | "t", "add") => Ok(Self::TodoAdd),
-                        ("todo" | "t", "edit" | "ed") => Ok(Self::TodoEdit),
-                        ("todo" | "t", "list" | "ls") => Ok(Self::TodoList),
-                        ("todo" | "t", "remove" | "rm") => Ok(Self::TodoRemove),
-                        _ => Err(()),
-                    }
-                ),
-                map(
-                    alt(
-                        (
-                            tag_no_case("quit"),
-                            tag_no_case("q"),
-                            tag_no_case("exit"),
-                        )
-                    ),
-                    |_| Self::Quit
-                ),
-                map(
-                    alt(
-                        (
-                            tag_no_case("help"),
-                            tag_no_case("h"),
-                        )
-                    ),
-                    |_| Self::Help
-                ),
-            )
-        ).parse(input)
+        alt((
+            Self::entity_action_command,
+            value(Self::Quit, alt((
+                tag_no_case("quit"),
+                tag_no_case("q"),
+                tag_no_case("exit"))
+            )),
+            value(Self::Help, alt((
+                tag_no_case("help"),
+                tag_no_case("h"))
+            )),
+        )).parse(input)
     }
 }
